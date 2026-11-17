@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#090b10">
+<title>Maps Gold — OpenStreetMap</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{color-scheme:dark;--bg:#090b10;--panel:#111722;--gold:#e8bd63;--muted:#9aa6b8;--line:#293343}
+*{box-sizing:border-box}
+html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:#f4f5f7;font-family:system-ui,"Segoe UI",sans-serif}
+#app{display:flex;flex-direction:column}
+header{z-index:500;display:flex;align-items:center;gap:10px;padding:10px 12px;background:#0c111bee;border-bottom:1px solid var(--line)}
+.brand{font-weight:850;letter-spacing:.5px;color:var(--gold);white-space:nowrap}
+.sub{font-size:11px;color:var(--muted)}
+button,input{font:inherit}
+button{border:1px solid #394455;background:#182130;color:#f5f6f8;border-radius:12px;padding:10px 12px;cursor:pointer}
+button:active{transform:scale(.97)}
+button.primary{background:var(--gold);color:#17130b;border-color:var(--gold);font-weight:800}
+button.active{border-color:var(--gold);color:var(--gold)}
+#searchbar{display:flex;gap:7px;padding:9px 10px;background:#0c111b;z-index:400}
+#query{min-width:0;flex:1;background:#171f2c;color:white;border:1px solid var(--line);border-radius:12px;padding:12px}
+#results{position:absolute;z-index:900;top:112px;left:10px;right:10px;max-height:38%;overflow:auto;background:#111925;border:1px solid #455064;border-radius:14px;display:none}
+.result{padding:12px;border-bottom:1px solid var(--line);font-size:13px}
+.result:last-child{border:0}
+#map{flex:1;min-height:0;background:#151b25}
+.leaflet-container{background:#151b25}
+.leaflet-control-attribution{font-size:9px!important}
+.leaflet-control-zoom a{background:#111925!important;color:var(--gold)!important;border-color:#394455!important}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#111925;color:#fff}
+.leaflet-popup-content{font-size:13px}
+#toolbar{z-index:500;display:flex;gap:7px;overflow-x:auto;padding:9px;background:#0c111bee;border-top:1px solid var(--line)}
+#toolbar button{white-space:nowrap;font-size:12px}
+#status{font-size:11px;color:var(--muted);padding:5px 12px;background:#0c111b}
+#details{display:none;max-height:27%;overflow:auto;padding:10px 13px;background:#111722;border-top:1px solid var(--line);font-size:13px}
+#details h3{margin:2px 0 8px;color:var(--gold)}
+#details ol{padding-left:22px}
+#details li{margin:7px 0;color:#d7deea}
+.gold{color:var(--gold)}
+.leaflet-marker-icon{filter:hue-rotate(15deg)}
+@media(min-width:850px){#app{max-width:1500px;margin:auto}header{padding:14px 20px}#toolbar{justify-content:center}}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+ <div><div class="brand">🐪 CAMEL MAPS GOLD</div><div class="sub">OpenStreetMap edition</div></div>
+ <div style="flex:1"></div>
+ <button id="lang">FR</button>
+ <button id="saved">☆ <span id="savedCount">0</span></button>
+</header>
+<div id="searchbar">
+ <input id="query" autocomplete="off" placeholder="Search a place, city or address…">
+ <button class="primary" id="search">Search</button>
+</div>
+<div id="results"></div>
+<div id="map"></div>
+<div id="details"></div>
+<div id="status">Preparing map…</div>
+<div id="toolbar">
+ <button class="active" id="locate">◎ My location</button>
+ <button id="route">➤ Route here</button>
+ <button id="save">☆ Save pin</button>
+ <button id="offline">◉ Offline compass</button>
+ <button id="clear">Clear route</button>
+</div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(()=>{
+"use strict";
+const $=id=>document.getElementById(id);
+const text={
+en:{search:"Search",placeholder:"Search a place, city or address…",locate:"◎ My location",route:"➤ Route here",save:"☆ Save pin",offline:"◉ Offline compass",clear:"Clear route",ready:"OpenStreetMap ready",locating:"Finding your location…",denied:"Location unavailable. Check Camel OS permissions.",noresult:"No places found.",saved:"Pin saved on this device.",choose:"Search for and select a destination first.",routing:"Calculating driving route…",routeError:"Route service unavailable. Try again later.",offlineInfo:"Offline compass: GPS and straight-line distance work without map tiles. Previously cached tiles may remain available."},
+fr:{search:"Chercher",placeholder:"Rechercher un lieu, une ville ou une adresse…",locate:"◎ Ma position",route:"➤ Itinéraire",save:"☆ Enregistrer",offline:"◉ Boussole hors ligne",clear:"Effacer trajet",ready:"OpenStreetMap prêt",locating:"Recherche de votre position…",denied:"Position indisponible. Vérifiez les autorisations Camel OS.",noresult:"Aucun lieu trouvé.",saved:"Position enregistrée sur cet appareil.",choose:"Recherchez et sélectionnez une destination.",routing:"Calcul de l’itinéraire…",routeError:"Service d’itinéraire indisponible. Réessayez.",offlineInfo:"Boussole hors ligne : GPS et distance directe fonctionnent sans tuiles cartographiques."},
+ar:{search:"بحث",placeholder:"ابحث عن مكان أو مدينة أو عنوان…",locate:"◎ موقعي",route:"➤ الاتجاهات",save:"☆ حفظ الموقع",offline:"◉ بوصلة دون إنترنت",clear:"مسح المسار",ready:"الخريطة جاهزة",locating:"جارٍ تحديد موقعك…",denied:"الموقع غير متاح. تحقق من أذونات Camel OS.",noresult:"لم يتم العثور على أماكن.",saved:"تم حفظ الموقع على هذا الجهاز.",choose:"ابحث عن وجهة وحددها أولاً.",routing:"جارٍ حساب مسار القيادة…",routeError:"خدمة المسارات غير متاحة حالياً.",offlineInfo:"البوصلة تعمل دون إنترنت باستخدام GPS والمسافة المباشرة."}
+};
+let lang="en",selected=null,userPosition=null,routeLayer=null,searchMarker=null;
+const map=L.map("map",{zoomControl:true}).setView([35.1676,8.8365],13);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+ maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+let userMarker=null;
+const pins=JSON.parse(localStorage.getItem("camelMapPins")||"[]");
+function say(key){$("status").textContent=text[lang][key]||key}
+function updateSaved(){ $("savedCount").textContent=pins.length; }
+function setLanguage(){
+ const t=text[lang];
+ $("lang").textContent=lang==="en"?"FR":lang==="fr"?"عربي":"EN";
+ $("query").placeholder=t.placeholder;
+ $("search").textContent=t.search;
+ $("locate").textContent=t.locate;
+ $("route").textContent=t.route;
+ $("save").textContent=t.save;
+ $("offline").textContent=t.offline;
+ $("clear").textContent=t.clear;
+ document.documentElement.lang=lang;
+ document.documentElement.dir=lang==="ar"?"rtl":"ltr";
+}
+$("lang").onclick=()=>{lang=lang==="en"?"fr":lang==="fr"?"ar":"en";setLanguage()};
+setLanguage();updateSaved();say("ready");
+
+function choosePlace(p){
+ selected={lat:p.lat,lon:p.lon,name:p.name||"Selected place"};
+ map.setView([p.lat,p.lon],16);
+ if(searchMarker)map.removeLayer(searchMarker);
+ searchMarker=L.marker([p.lat,p.lon]).addTo(map).bindPopup(selected.name).openPopup();
+ $("results").style.display="none";
+ $("query").value=selected.name;
+}
+async function searchPlaces(){
+ const q=$("query").value.trim();
+ if(q.length<2)return;
+ $("status").textContent="Searching…";
+ $("results").style.display="block";
+ $("results").innerHTML='<div class="result">Searching…</div>';
+ try{
+  const url="https://photon.komoot.io/api/?limit=8&lang="+lang+"&q="+encodeURIComponent(q);
+  const r=await fetch(url,{headers:{"Accept":"application/json"}});
+  if(!r.ok)throw Error("Search failed");
+  const data=await r.json();
+  const features=data.features||[];
+  $("results").innerHTML="";
+  if(!features.length){$("results").innerHTML='<div class="result">'+text[lang].noresult+'</div>';return}
+  features.forEach(f=>{
+   const c=f.geometry.coordinates,p=f.properties||{};
+   const name=[p.name,p.street,p.housenumber,p.city||p.town||p.village,p.country].filter(Boolean).join(", ");
+   const el=document.createElement("div");el.className="result";el.textContent=name||"Place";
+   el.onclick=()=>choosePlace({lat:c[1],lon:c[0],name:name||"Place"});
+   $("results").appendChild(el);
+  });
+  say("ready");
+ }catch(e){$("results").style.display="none";$("status").textContent="Search unavailable: "+e.message}
+}
+$("search").onclick=searchPlaces;
+$("query").addEventListener("keydown",e=>{if(e.key==="Enter")searchPlaces()});
+document.addEventListener("click",e=>{if(!$("results").contains(e.target)&&e.target!==$("query")&&e.target!==$("search"))$("results").style.display="none"});
+
+$("locate").onclick=()=>{
+ if(!navigator.geolocation){say("denied");return}
+ say("locating");
+ navigator.geolocation.getCurrentPosition(pos=>{
+  userPosition={lat:pos.coords.latitude,lon:pos.coords.longitude};
+  if(userMarker)map.removeLayer(userMarker);
+  userMarker=L.circleMarker([userPosition.lat,userPosition.lon],{radius:9,color:"#e8bd63",fillColor:"#e8bd63",fillOpacity:1}).addTo(map).bindPopup("You are here");
+  map.setView([userPosition.lat,userPosition.lon],16);
+  say("ready");
+ },()=>say("denied"),{enableHighAccuracy:true,timeout:15000,maximumAge:30000});
+};
+$("save").onclick=()=>{
+ if(!selected){say("choose");return}
+ pins.push(selected);localStorage.setItem("camelMapPins",JSON.stringify(pins));updateSaved();say("saved");
+};
+$("saved").onclick=()=>{
+ $("results").innerHTML="";
+ if(!pins.length){$("results").innerHTML='<div class="result">No saved pins yet</div>'}
+ pins.forEach((p,i)=>{
+  const el=document.createElement("div");el.className="result";el.textContent="☆ "+p.name+"  ×";
+  el.onclick=()=>{choosePlace(p);};
+  el.oncontextmenu=e=>{e.preventDefault();pins.splice(i,1);localStorage.setItem("camelMapPins",JSON.stringify(pins));updateSaved();el.remove()};
+  $("results").appendChild(el);
+ });
+ $("results").style.display="block";
+};
+function distance(a,b){
+ const R=6371000,rad=x=>x*Math.PI/180;
+ const d1=rad(b.lat-a.lat),d2=rad(b.lon-a.lon);
+ const h=Math.sin(d1/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(d2/2)**2;
+ return 2*R*Math.asin(Math.sqrt(h));
+}
+$("offline").onclick=()=>{
+ if(!navigator.geolocation){say("denied");return}
+ navigator.geolocation.getCurrentPosition(pos=>{
+  const here={lat:pos.coords.latitude,lon:pos.coords.longitude};
+  if(!selected){$("details").style.display="block";$("details").textContent=text[lang].offlineInfo;return}
+  const d=distance(here,selected);
+  const bearing=Math.atan2(Math.sin((selected.lon-here.lon)*Math.PI/180)*Math.cos(selected.lat*Math.PI/180),
+   Math.cos(here.lat*Math.PI/180)*Math.sin(selected.lat*Math.PI/180)-Math.sin(here.lat*Math.PI/180)*Math.cos(selected.lat*Math.PI/180)*Math.cos((selected.lon-here.lon)*Math.PI/180))*180/Math.PI;
+  $("details").style.display="block";
+  $("details").textContent=text[lang].offlineInfo+"  •  "+(d/1000).toFixed(2)+" km • Bearing "+((bearing+360)%360).toFixed(0)+"°";
+ },()=>say("denied"),{enableHighAccuracy:true,timeout:15000});
+};
+$("route").onclick=async()=>{
+ if(!selected){say("choose");return}
+ const start= userPosition;
+ if(!start){say("locating");navigator.geolocation?.getCurrentPosition(pos=>{
+  userPosition={lat:pos.coords.latitude,lon:pos.coords.longitude};$("route").click();
+ },()=>say("denied"));return}
+ say("routing");
+ try{
+  const url=`https://router.project-osrm.org/route/v1/driving/${start.lon},${start.lat};${selected.lon},${selected.lat}?overview=full&geometries=geojson&steps=true`;
+  const r=await fetch(url);if(!r.ok)throw Error("Routing failed");
+  const data=await r.json();if(data.code!=="Ok"||!data.routes?.length)throw Error("No route");
+  if(routeLayer)map.removeLayer(routeLayer);
+  const route=data.routes[0],coords=route.geometry.coordinates.map(c=>[c[1],c[0]]);
+  routeLayer=L.polyline(coords,{color:"#e8bd63",weight:5,opacity:.9}).addTo(map);
+  map.fitBounds(routeLayer.getBounds(),{padding:[30,30]});
+  $("details").style.display="block";
+  const km=(route.distance/1000).toFixed(1),mins=Math.round(route.duration/60);
+  $("details").innerHTML="";
+  const h=document.createElement("h3");h.textContent=`Driving route • ${km} km • ${mins} min`;
+  $("details").appendChild(h);
+  const ol=document.createElement("ol");
+  (route.legs[0].steps||[]).forEach(step=>{
+   const li=document.createElement("li");li.textContent=(step.name||"Continue")+" — "+(step.maneuver?.type||"Continue")+
+    (step.distance>0?" ("+(step.distance/1000).toFixed(2)+" km)":"");ol.appendChild(li);
+  });
+  $("details").appendChild(ol);say("ready");
+ }catch(e){say("routeError");console.warn(e)}
+};
+$("clear").onclick=()=>{
+ if(routeLayer)map.removeLayer(routeLayer);routeLayer=null;
+ $("details").style.display="none";say("ready");
+};
+map.on("click",e=>{selected={lat:e.latlng.lat,lon:e.latlng.lng,name:"Dropped pin"};
+ if(searchMarker)map.removeLayer(searchMarker);
+ searchMarker=L.marker(e.latlng).addTo(map).bindPopup("Dropped pin").openPopup();
+});
+window.addEventListener("online",()=>say("ready"));
+window.addEventListener("offline",()=>{$("status").textContent="Offline — GPS compass and saved pins remain available"});
+})();
+</script>
+</body>
+</html>

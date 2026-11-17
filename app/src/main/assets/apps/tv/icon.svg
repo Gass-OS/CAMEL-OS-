@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="tvBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#16161b"/>
+      <stop offset="100%" stop-color="#08080a"/>
+    </linearGradient>
+    <linearGradient id="tvGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fdf0b8"/>
+      <stop offset="50%" stop-color="#d4af37"/>
+      <stop offset="100%" stop-color="#9a7216"/>
+    </linearGradient>
+    <linearGradient id="screenGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22222b"/>
+      <stop offset="100%" stop-color="#0c0c0f"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App Rounded Base -->
+  <rect width="512" height="512" rx="112" fill="url(#tvBgGrad)"/>
+  <rect x="16" y="16" width="480" height="480" rx="98" fill="none" stroke="url(#tvGoldGrad)" stroke-width="5" stroke-opacity="0.4"/>
+
+  <!-- Slim V-Antenna above TV -->
+  <path d="M192 112 L256 168 L320 112" fill="none" stroke="url(#tvGoldGrad)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="192" cy="112" r="10" fill="url(#tvGoldGrad)"/>
+  <circle cx="320" cy="112" r="10" fill="url(#tvGoldGrad)"/>
+
+  <!-- TV Outer Monitor Bezel (16:9 proportioned) -->
+  <rect x="76" y="168" width="360" height="236" rx="28" fill="url(#screenGlass)" stroke="url(#tvGoldGrad)" stroke-width="8"/>
+  <rect x="94" y="186" width="324" height="200" rx="16" fill="#07070a" stroke="url(#tvGoldGrad)" stroke-width="2" stroke-opacity="0.35"/>
+
+  <!-- Play Glyph & Broadcast Signal Waves inside Screen -->
+  <polygon points="236,246 296,286 236,326" fill="url(#tvGoldGrad)"/>
+
+  <!-- Broadcast Arcs on Left & Right of Screen -->
+  <path d="M142 254 A36 36 0 0 0 142 318" fill="none" stroke="url(#tvGoldGrad)" stroke-width="6" stroke-linecap="round" opacity="0.8"/>
+  <path d="M124 238 A58 58 0 0 0 124 334" fill="none" stroke="url(#tvGoldGrad)" stroke-width="6" stroke-linecap="round" opacity="0.45"/>
+
+  <path d="M370 254 A36 36 0 0 1 370 318" fill="none" stroke="url(#tvGoldGrad)" stroke-width="6" stroke-linecap="round" opacity="0.8"/>
+  <path d="M388 238 A58 58 0 0 1 388 334" fill="none" stroke="url(#tvGoldGrad)" stroke-width="6" stroke-linecap="round" opacity="0.45"/>
+
+  <!-- TV Stand Base -->
+  <path d="M232 404 L216 438 L296 438 L280 404" fill="url(#tvGoldGrad)"/>
+  <rect x="188" y="434" width="136" height="10" rx="5" fill="url(#tvGoldGrad)"/>
+</svg>

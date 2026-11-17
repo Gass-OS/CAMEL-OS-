@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="studioObsidian" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#221b0f" />
+      <stop offset="70%" stop-color="#0d0c09" />
+      <stop offset="100%" stop-color="#050505" />
+    </radialGradient>
+    <linearGradient id="studioGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff1c1" />
+      <stop offset="45%" stop-color="#d4af37" />
+      <stop offset="100%" stop-color="#8b6508" />
+    </linearGradient>
+  </defs>
+
+  <!-- Base Rounded Square -->
+  <rect width="512" height="512" rx="112" fill="url(#studioObsidian)" />
+
+  <!-- Outer Gold Studio Frame Ring -->
+  <circle cx="256" cy="256" r="196" fill="none" stroke="url(#studioGold)" stroke-width="6" stroke-opacity="0.45" />
+
+  <!-- Condenser Microphone Capsule -->
+  <rect x="204" y="114" width="104" height="176" rx="52" fill="#17140d" stroke="url(#studioGold)" stroke-width="14" />
+
+  <!-- Capsule Grill Lines -->
+  <g stroke="url(#studioGold)" stroke-width="8" stroke-linecap="round" stroke-opacity="0.85">
+    <line x1="228" y1="162" x2="284" y2="162" />
+    <line x1="224" y1="194" x2="288" y2="194" />
+    <line x1="228" y1="226" x2="284" y2="226" />
+  </g>
+
+  <!-- U-Shaped Cradle -->
+  <path
+    d="M158 242 C158 310 198 346 256 346 C314 346 354 310 354 242"
+    fill="none"
+    stroke="url(#studioGold)"
+    stroke-width="14"
+    stroke-linecap="round"
+  />
+
+  <!-- Stand Stem & Base -->
+  <line x1="256" y1="346" x2="256" y2="398" stroke="url(#studioGold)" stroke-width="14" stroke-linecap="round" />
+  <line x1="196" y1="398" x2="316" y2="398" stroke="url(#studioGold)" stroke-width="14" stroke-linecap="round" />
+
+  <!-- Left & Right Soundwave Arcs -->
+  <path d="M126 196 Q106 232 126 268" fill="none" stroke="#d4af37" stroke-width="9" stroke-linecap="round" stroke-opacity="0.7" />
+  <path d="M386 196 Q406 232 386 268" fill="none" stroke="#d4af37" stroke-width="9" stroke-linecap="round" stroke-opacity="0.7" />
+
+  <!-- REC Crimson Beacon Dot -->
+  <circle cx="378" cy="134" r="22" fill="#e11d48" stroke="#0a0a0a" stroke-width="6" />
+</svg>

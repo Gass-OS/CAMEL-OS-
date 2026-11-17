@@ -1,0 +1,6 @@
+{
+  "name": "Camel OS",
+  "description": "Unified Android mini operating system integrating modular native applications, system telemetry, and AI productivity",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

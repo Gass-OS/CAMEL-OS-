@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="obsidianSky" cx="50%" cy="40%" r="65%">
+      <stop offset="0%" stop-color="#221b0f" />
+      <stop offset="68%" stop-color="#0e0d0a" />
+      <stop offset="100%" stop-color="#050505" />
+    </radialGradient>
+    <linearGradient id="solarGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff1c1" />
+      <stop offset="45%" stop-color="#d4af37" />
+      <stop offset="100%" stop-color="#8f6608" />
+    </linearGradient>
+    <linearGradient id="cloudBody" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#28241d" />
+      <stop offset="100%" stop-color="#12110e" />
+    </linearGradient>
+  </defs>
+
+  <!-- Obsidian Base -->
+  <rect width="512" height="512" rx="112" fill="url(#obsidianSky)" />
+
+  <!-- Subtle Outer Gold Framing Ring -->
+  <circle cx="256" cy="256" r="204" fill="none" stroke="#d4af37" stroke-width="3" stroke-opacity="0.28" />
+
+  <!-- Solar Rays -->
+  <g stroke="url(#solarGold)" stroke-width="11" stroke-linecap="round">
+    <line x1="322" y1="92" x2="322" y2="118" />
+    <line x1="398" y1="124" x2="380" y2="142" />
+    <line x1="430" y1="200" x2="404" y2="200" />
+    <line x1="246" y1="124" x2="264" y2="142" />
+    <line x1="398" y1="276" x2="380" y2="258" />
+  </g>
+
+  <!-- Radiant Sun Orb -->
+  <circle cx="322" cy="200" r="66" fill="url(#solarGold)" />
+  <circle cx="322" cy="200" r="52" fill="#f7eab8" fill-opacity="0.28" />
+
+  <!-- Sculpted Black & Gold Cloud -->
+  <path
+    d="M144 338 H352 C384 338 408 314 408 282 C408 253 386 229 358 226 C350 183 312 152 268 152 C226 152 190 180 180 219 C174 217 167 216 160 216 C122 216 92 246 92 282 C92 314 114 338 144 338 Z"
+    fill="url(#cloudBody)"
+    stroke="url(#solarGold)"
+    stroke-width="13"
+    stroke-linejoin="round"
+  />
+
+  <!-- Stylized Gold Raindrops / Barometer Glints -->
+  <g stroke="url(#solarGold)" stroke-width="10" stroke-linecap="round">
+    <line x1="184" y1="368" x2="170" y2="398" />
+    <line x1="252" y1="368" x2="238" y2="406" />
+    <line x1="320" y1="368" x2="306" y2="398" />
+  </g>
+</svg>

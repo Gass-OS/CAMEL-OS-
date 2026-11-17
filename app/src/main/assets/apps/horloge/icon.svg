@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="obsidianBg" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#1f1a10" />
+      <stop offset="70%" stop-color="#0d0c09" />
+      <stop offset="100%" stop-color="#050505" />
+    </radialGradient>
+    <linearGradient id="brushedGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f7eab8" />
+      <stop offset="45%" stop-color="#d4af37" />
+      <stop offset="100%" stop-color="#8b6508" />
+    </linearGradient>
+    <linearGradient id="goldGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f3e5ab" />
+      <stop offset="100%" stop-color="#b8860b" />
+    </linearGradient>
+  </defs>
+
+  <!-- App Icon Base -->
+  <rect width="512" height="512" rx="112" fill="url(#obsidianBg)" />
+
+  <!-- Top Chronograph Pusher / Crown Lug -->
+  <rect x="236" y="46" width="40" height="24" rx="8" fill="url(#brushedGold)" />
+  <rect x="246" y="64" width="20" height="20" fill="#8b6508" />
+  <!-- Side Chronograph Pusher -->
+  <g transform="rotate(35 256 266)">
+    <rect x="242" y="58" width="28" height="20" rx="6" fill="url(#brushedGold)" />
+  </g>
+
+  <!-- Outer Gold Bezel -->
+  <circle cx="256" cy="266" r="176" fill="#090909" stroke="url(#brushedGold)" stroke-width="18" />
+  <circle cx="256" cy="266" r="154" fill="none" stroke="#d4af37" stroke-width="2" stroke-opacity="0.45" />
+
+  <!-- 12 Hour Markers -->
+  <g stroke="url(#goldGlow)" stroke-linecap="round">
+    <line x1="256" y1="118" x2="256" y2="142" stroke-width="10" />
+    <line x1="256" y1="390" x2="256" y2="414" stroke-width="10" />
+    <line x1="108" y1="266" x2="132" y2="266" stroke-width="10" />
+    <line x1="380" y1="266" x2="404" y2="266" stroke-width="10" />
+
+    <line x1="330" y1="138" x2="321" y2="154" stroke-width="6" />
+    <line x1="384" y1="192" x2="368" y2="201" stroke-width="6" />
+    <line x1="384" y1="340" x2="368" y2="331" stroke-width="6" />
+    <line x1="330" y1="394" x2="321" y2="378" stroke-width="6" />
+    <line x1="182" y1="394" x2="191" y2="378" stroke-width="6" />
+    <line x1="128" y1="340" x2="144" y2="331" stroke-width="6" />
+    <line x1="128" y1="192" x2="144" y2="201" stroke-width="6" />
+    <line x1="182" y1="138" x2="191" y2="154" stroke-width="6" />
+  </g>
+
+  <!-- Sub-dial Chronograph Ring (Stopwatch Detail) -->
+  <circle cx="256" cy="332" r="36" fill="#12100b" stroke="#d4af37" stroke-width="3" stroke-opacity="0.7" />
+  <line x1="256" y1="332" x2="274" y2="314" stroke="#f3e5ab" stroke-width="4" stroke-linecap="round" />
+
+  <!-- Hour Hand (10 o'clock) -->
+  <line x1="256" y1="266" x2="188" y2="220" stroke="url(#brushedGold)" stroke-width="15" stroke-linecap="round" />
+  <!-- Minute Hand (2 o'clock) -->
+  <line x1="256" y1="266" x2="344" y2="194" stroke="#f7eab8" stroke-width="11" stroke-linecap="round" />
+  <!-- Precision Second Hand -->
+  <line x1="256" y1="292" x2="256" y2="140" stroke="#e11d48" stroke-width="5" stroke-linecap="round" />
+
+  <!-- Center Jewel Hub -->
+  <circle cx="256" cy="266" r="16" fill="url(#brushedGold)" />
+  <circle cx="256" cy="266" r="6" fill="#0a0a0a" />
+</svg>

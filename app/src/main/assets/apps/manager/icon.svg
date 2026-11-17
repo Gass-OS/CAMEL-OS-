@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141416"/>
+      <stop offset="100%" stop-color="#070708"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f7e7a9"/>
+      <stop offset="50%" stop-color="#d4af37"/>
+      <stop offset="100%" stop-color="#9e761d"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  <rect x="14" y="14" width="484" height="484" rx="100" fill="none" stroke="url(#goldGrad)" stroke-width="5" stroke-opacity="0.45"/>
+
+  <!-- Beveled luxury archive folder back tab -->
+  <path d="M96 140 C96 122 110 108 128 108 L216 108 L248 142 L384 142 C402 142 416 156 416 174 L416 206 L96 206 Z" fill="#1d1b14" stroke="url(#goldGrad)" stroke-width="6" stroke-linejoin="round"/>
+
+  <!-- Main obsidian folder body -->
+  <rect x="96" y="176" width="320" height="226" rx="28" fill="#141418" stroke="url(#goldGrad)" stroke-width="7"/>
+
+  <!-- ZArchiver-style golden zipper spine down left-center -->
+  <rect x="150" y="180" width="22" height="218" fill="#0b0b0d"/>
+  <g fill="url(#goldGrad)">
+    <rect x="146" y="196" width="14" height="8" rx="3"/>
+    <rect x="162" y="212" width="14" height="8" rx="3"/>
+    <rect x="146" y="228" width="14" height="8" rx="3"/>
+    <rect x="162" y="244" width="14" height="8" rx="3"/>
+    <rect x="146" y="260" width="14" height="8" rx="3"/>
+    <rect x="162" y="276" width="14" height="8" rx="3"/>
+    <rect x="146" y="292" width="14" height="8" rx="3"/>
+    <rect x="162" y="308" width="14" height="8" rx="3"/>
+    <rect x="146" y="324" width="14" height="8" rx="3"/>
+    <rect x="162" y="340" width="14" height="8" rx="3"/>
+    <rect x="146" y="356" width="14" height="8" rx="3"/>
+    <rect x="162" y="372" width="14" height="8" rx="3"/>
+  </g>
+  <!-- Zipper slider -->
+  <rect x="142" y="224" width="38" height="32" rx="8" fill="url(#goldGrad)" stroke="#0a0a0a" stroke-width="3"/>
+  <rect x="152" y="252" width="18" height="26" rx="6" fill="#f7e7a9" stroke="#0a0a0a" stroke-width="2"/>
+
+  <!-- Package / APK cube + emblem on right side -->
+  <path d="M294 236 L354 270 L354 338 L294 372 L234 338 L234 270 Z" fill="#1c1910" stroke="url(#goldGrad)" stroke-width="6" stroke-linejoin="round"/>
+  <polyline points="234,270 294,304 354,270" fill="none" stroke="url(#goldGrad)" stroke-width="5" stroke-linejoin="round"/>
+  <line x1="294" y1="304" x2="294" y2="372" stroke="url(#goldGrad)" stroke-width="5" stroke-linecap="round"/>
+</svg>
