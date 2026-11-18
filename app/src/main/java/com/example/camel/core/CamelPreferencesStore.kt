@@ -25,7 +25,9 @@ data class CamelOsPreferences(
     val showClockOnDesktop: Boolean = true,
     val pinnedDesktopApps: Set<String> = emptySet(),
     val pinnedPanelApps: Set<String> = emptySet(),
-    val disabledApps: Set<String> = emptySet()
+    val disabledApps: Set<String> = emptySet(),
+    /** Per-app custom icons: routeKey -> "icon:<Name>" or "file:<path>". */
+    val customAppIcons: Map<String, String> = emptyMap()
 )
 
 class CamelPreferencesStore(private val context: Context) {
@@ -42,6 +44,7 @@ class CamelPreferencesStore(private val context: Context) {
         val PINNED_DESKTOP_APPS = stringSetPreferencesKey("pinned_desktop_apps")
         val PINNED_PANEL_APPS = stringSetPreferencesKey("pinned_panel_apps")
         val DISABLED_APPS = stringSetPreferencesKey("disabled_apps")
+        val CUSTOM_APP_ICONS = stringSetPreferencesKey("custom_app_icons")
     }
 
     val preferencesFlow: Flow<CamelOsPreferences> = context.camelOsDataStore.data.map { prefs ->
@@ -56,7 +59,8 @@ class CamelPreferencesStore(private val context: Context) {
             showClockOnDesktop = prefs[Keys.SHOW_CLOCK] ?: true,
             pinnedDesktopApps = prefs[Keys.PINNED_DESKTOP_APPS] ?: emptySet(),
             pinnedPanelApps = prefs[Keys.PINNED_PANEL_APPS] ?: emptySet(),
-            disabledApps = prefs[Keys.DISABLED_APPS] ?: emptySet()
+            disabledApps = prefs[Keys.DISABLED_APPS] ?: emptySet(),
+            customAppIcons = CamelAppIconOverrides.parse(prefs[Keys.CUSTOM_APP_ICONS] ?: emptySet())
         )
     }
 
@@ -122,5 +126,24 @@ class CamelPreferencesStore(private val context: Context) {
             val current = prefs[Keys.DISABLED_APPS] ?: emptySet()
             prefs[Keys.DISABLED_APPS] = if (routeKey in current) current - routeKey else current + routeKey
         }
+    }
+
+    /** Set a custom icon reference for one app, or clear it when [reference] is null. */
+    suspend fun setCustomAppIcon(routeKey: String, reference: String?) {
+        context.camelOsDataStore.edit { prefs ->
+            val current = CamelAppIconOverrides.parse(prefs[Keys.CUSTOM_APP_ICONS] ?: emptySet())
+            val updated = if (reference == null) {
+                current - routeKey
+            } else if (CamelAppIconOverrides.isValidReference(reference)) {
+                current + (routeKey to reference)
+            } else {
+                current
+            }
+            prefs[Keys.CUSTOM_APP_ICONS] = CamelAppIconOverrides.encode(updated)
+        }
+    }
+
+    suspend fun resetCustomAppIcons() {
+        context.camelOsDataStore.edit { it[Keys.CUSTOM_APP_ICONS] = emptySet() }
     }
 }

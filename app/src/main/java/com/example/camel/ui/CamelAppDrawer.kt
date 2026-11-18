@@ -41,7 +41,8 @@ fun CamelAppDrawer(
     onLongClickApp: (CamelAppId) -> Unit,
     onOpenSettings: () -> Unit,
     onCloseDrawer: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    customAppIcons: Map<String, String> = emptyMap()
 ) {
     var selectedCategory by remember { mutableStateOf<CamelAppCategory?>(null) }
 
@@ -165,7 +166,8 @@ fun CamelAppDrawer(
                     PlasmaDesktopAppIcon(
                         app = app,
                         onClick = { onSelectApp(app.id) },
-                        onLongClick = { onLongClickApp(app.id) }
+                        onLongClick = { onLongClickApp(app.id) },
+                        customIconRef = customAppIcons[app.id.routeKey]
                     )
                 }
 

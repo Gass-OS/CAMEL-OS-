@@ -1,7 +1,11 @@
 package com.example.camel.ui
 
 import android.app.Activity
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -82,7 +86,18 @@ fun CamelOsShell(
     val unreadCount = remember(notifications) { notifications.count { it.isUnread } }
     var showExitConfirmation by remember { mutableStateOf(false) }
     var showDesktopContextMenu by remember { mutableStateOf(false) }
+    var iconPickerTarget by remember { mutableStateOf<CamelAppId?>(null) }
     val activity = LocalContext.current as? Activity
+
+    val iconPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        val target = iconPickerTarget
+        if (uri != null && target != null) {
+            osViewModel.setCustomAppIconFromUri(target, uri)
+        }
+        iconPickerTarget = null
+    }
 
     val closeRunningApp = { appId: CamelAppId ->
          appId.webFolder()?.let(::releaseCamelWebView)
@@ -120,6 +135,7 @@ fun CamelOsShell(
                     isSettingsOpen = isSettingsOpen,
                     runningApps = runningApps,
                     pinnedPanelApps = prefs.pinnedPanelApps,
+                    customAppIcons = prefs.customAppIcons,
                     telemetry = telemetry,
                     unreadNotifications = unreadCount,
                     onToggleDrawer = { osViewModel.toggleDrawer() },
@@ -152,7 +168,8 @@ fun CamelOsShell(
                                 onSelectApp = { osViewModel.openApp(it) },
                                 onLongClickApp = osViewModel::openAppContextMenu,
                                 onOpenSettings = { osViewModel.openSettings(true) },
-                                onCloseDrawer = { osViewModel.toggleDrawer(false) }
+                                onCloseDrawer = { osViewModel.toggleDrawer(false) },
+                                customAppIcons = prefs.customAppIcons
                             )
                         }
                     }
@@ -172,6 +189,9 @@ fun CamelOsShell(
                                 onToggleDesktopShortcut = osViewModel::toggleDesktopShortcut,
                                 onTogglePanelShortcut = osViewModel::togglePanelShortcut,
                                 onToggleAppEnabled = osViewModel::toggleAppEnabled,
+                                onSetCustomAppIcon = osViewModel::setCustomAppIcon,
+                                onResetCustomAppIcon = osViewModel::resetCustomAppIcon,
+                                onPickCustomAppIconUri = osViewModel::setCustomAppIconFromUri,
                                 onOpenApp = { osViewModel.openApp(it) },
                                 onCloseSettings = { osViewModel.openSettings(false) }
                             )
@@ -226,7 +246,32 @@ fun CamelOsShell(
                     onToggleDesktopShortcut = osViewModel::toggleDesktopShortcut,
                     onTogglePanelShortcut = osViewModel::togglePanelShortcut,
                     onOpenInAppManager = { osViewModel.openSettings(true) },
-                    onDismiss = osViewModel::dismissAppContextMenu
+                    onDismiss = osViewModel::dismissAppContextMenu,
+                    customIconRef = prefs.customAppIcons[ctxDescriptor.id.routeKey],
+                    onChangeIcon = { iconPickerTarget = it },
+                    onResetIcon = { osViewModel.resetCustomAppIcon(it) }
+                )
+            }
+
+            val iconPickerApp = iconPickerTarget?.let { CamelAppRegistry.get(it) }
+            if (iconPickerApp != null) {
+                CamelAppIconPicker(
+                    app = iconPickerApp,
+                    currentRef = prefs.customAppIcons[iconPickerApp.id.routeKey],
+                    onSelectBuiltIn = { name ->
+                        osViewModel.setCustomAppIcon(iconPickerApp.id, name)
+                        iconPickerTarget = null
+                    },
+                    onPickFromGallery = {
+                        iconPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    onResetIcon = {
+                        osViewModel.resetCustomAppIcon(iconPickerApp.id)
+                        iconPickerTarget = null
+                    },
+                    onDismiss = { iconPickerTarget = null }
                 )
             }
 
@@ -333,7 +378,8 @@ private fun CamelTopPlasmaPanel(
     onOpenSettings: () -> Unit,
     onSelectApp: (CamelAppId) -> Unit,
     onCloseRunningApp: (CamelAppId) -> Unit,
-    onOpenControlCenter: () -> Unit
+    onOpenControlCenter: () -> Unit,
+    customAppIcons: Map<String, String> = emptyMap()
 ) {
     var clockMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var switcherExpanded by remember { mutableStateOf(false) }
@@ -444,11 +490,11 @@ private fun CamelTopPlasmaPanel(
                                     DropdownMenuItem(
                                         text = { Text(descriptor.title, maxLines = 1) },
                                         leadingIcon = {
-                                            Icon(
-                                                descriptor.icon,
-                                                contentDescription = null,
-                                                tint = Color(descriptor.accentHex),
-                                                modifier = Modifier.size(18.dp)
+                                            CamelAppIcon(
+                                                app = descriptor,
+                                                customIconRef = customAppIcons[descriptor.id.routeKey],
+                                                modifier = Modifier.size(18.dp),
+                                                tint = Color(descriptor.accentHex)
                                             )
                                         },
                                         trailingIcon = {
@@ -493,11 +539,11 @@ private fun CamelTopPlasmaPanel(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                descriptor.icon,
-                                contentDescription = descriptor.title,
-                                tint = Color(descriptor.accentHex),
-                                modifier = Modifier.size(17.dp)
+                            CamelAppIcon(
+                                app = descriptor,
+                                customIconRef = customAppIcons[descriptor.id.routeKey],
+                                modifier = Modifier.size(17.dp),
+                                tint = Color(descriptor.accentHex)
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
@@ -532,11 +578,11 @@ private fun CamelTopPlasmaPanel(
                             .testTag("top_panel_pin_${app.id.routeKey}")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                app.icon,
-                                contentDescription = app.title,
-                                tint = Color(app.accentHex),
-                                modifier = Modifier.size(20.dp)
+                            CamelAppIcon(
+                                app = app,
+                                customIconRef = customAppIcons[app.id.routeKey],
+                                modifier = Modifier.size(20.dp),
+                                tint = Color(app.accentHex)
                             )
                         }
                     }

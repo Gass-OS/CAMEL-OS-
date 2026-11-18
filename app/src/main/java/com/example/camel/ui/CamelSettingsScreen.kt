@@ -53,11 +53,15 @@ fun CamelSettingsScreen(
     onToggleAppEnabled: (CamelAppId) -> Unit,
     onOpenApp: (CamelAppId) -> Unit,
     onCloseSettings: () -> Unit,
+    onSetCustomAppIcon: (CamelAppId, String) -> Unit = { _, _ -> },
+    onResetCustomAppIcon: (CamelAppId) -> Unit = {},
+    onPickCustomAppIconUri: (CamelAppId, Uri) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var activeTab by remember { mutableStateOf(CamelSettingsTab.APPEARANCE) }
     var appFilterQuery by remember { mutableStateOf("") }
+    var iconPickerTarget by remember { mutableStateOf<CamelAppId?>(null) }
 
     val wallpaperPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -65,6 +69,16 @@ fun CamelSettingsScreen(
         if (uri != null) {
             onPickCustomWallpaperUri(uri)
         }
+    }
+
+    val iconPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        val target = iconPickerTarget
+        if (uri != null && target != null) {
+            onPickCustomAppIconUri(target, uri)
+        }
+        iconPickerTarget = null
     }
 
     Surface(
@@ -457,8 +471,13 @@ fun CamelSettingsScreen(
                                                 modifier = Modifier.size(42.dp)
                                             ) {
                                                 Box(contentAlignment = Alignment.Center) {
-                                                    Icon(app.icon, contentDescription = app.title, tint = Color(app.accentHex))
-                                                }
+                                                CamelAppIcon(
+                                                    app = app,
+                                                    customIconRef = preferences.customAppIcons[app.id.routeKey],
+                                                    modifier = Modifier.size(24.dp),
+                                                    tint = Color(app.accentHex)
+                                                )
+                                            }
                                             }
                                             Spacer(modifier = Modifier.width(10.dp))
                                             Column(modifier = Modifier.weight(1f)) {
@@ -497,6 +516,14 @@ fun CamelSettingsScreen(
                                                 label = { Text(if (isPanelPinned) "In Panel" else "Pin Panel") }
                                             )
                                             Spacer(modifier = Modifier.weight(1f))
+                                            TextButton(onClick = { iconPickerTarget = app.id }) {
+                                                Text("Change icon")
+                                            }
+                                            if (app.id.routeKey in preferences.customAppIcons) {
+                                                TextButton(onClick = { onResetCustomAppIcon(app.id) }) {
+                                                    Text("Reset icon")
+                                                }
+                                            }
                                             TextButton(onClick = { onOpenApp(app.id) }) {
                                                 Text(if (app.isIntegrated) "Open" else "Specs")
                                             }
@@ -507,6 +534,28 @@ fun CamelSettingsScreen(
                         }
                     }
                 }
+            }
+
+            val iconPickerApp = iconPickerTarget?.let { CamelAppRegistry.get(it) }
+            if (iconPickerApp != null) {
+                CamelAppIconPicker(
+                    app = iconPickerApp,
+                    currentRef = preferences.customAppIcons[iconPickerApp.id.routeKey],
+                    onSelectBuiltIn = { name ->
+                        onSetCustomAppIcon(iconPickerApp.id, name)
+                        iconPickerTarget = null
+                    },
+                    onPickFromGallery = {
+                        iconPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    onResetIcon = {
+                        onResetCustomAppIcon(iconPickerApp.id)
+                        iconPickerTarget = null
+                    },
+                    onDismiss = { iconPickerTarget = null }
+                )
             }
         }
     }

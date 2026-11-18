@@ -1,6 +1,8 @@
 package com.example.camel.core
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -264,6 +266,91 @@ class CamelOsViewModel(application: Application) : AndroidViewModel(application)
             }
             prefsStore.toggleAppEnabled(appId.routeKey)
         }
+    }
+
+    fun setCustomAppIcon(appId: CamelAppId, iconName: String) {
+        viewModelScope.launch {
+            prefsStore.setCustomAppIcon(appId.routeKey, "icon:$iconName")
+            postNotification(
+                sourceApp = appId,
+                sourceLabel = "Appearance",
+                title = "Icon Updated",
+                message = "${CamelAppRegistry.get(appId).title} now uses the $iconName icon.",
+                severity = CamelNotificationSeverity.INFO
+            )
+        }
+    }
+
+    fun resetCustomAppIcon(appId: CamelAppId) {
+        viewModelScope.launch {
+            val hadOverride = appId.routeKey in preferences.value.customAppIcons
+            prefsStore.setCustomAppIcon(appId.routeKey, null)
+            if (hadOverride) {
+                runCatching {
+                    File(getApplication<Application>().filesDir, "app_icons/${appId.routeKey}.jpg").delete()
+                }
+                postNotification(
+                    sourceApp = appId,
+                    sourceLabel = "Appearance",
+                    title = "Icon Reset",
+                    message = "${CamelAppRegistry.get(appId).title} is back to its original icon.",
+                    severity = CamelNotificationSeverity.INFO
+                )
+            }
+        }
+    }
+
+    /**
+     * Gallery icon: decode the picked image, downscale it to at most 512 px
+     * (same pattern as PhotoStorageHelper) and store it as a private JPEG
+     * per app, so the icon survives after the picker URI permission ends.
+     */
+    fun setCustomAppIconFromUri(appId: CamelAppId, uri: Uri) {
+        viewModelScope.launch {
+            val savedPath = withContext(Dispatchers.IO) {
+                runCatching {
+                    val dir = File(getApplication<Application>().filesDir, "app_icons").apply { mkdirs() }
+                    val target = File(dir, "${appId.routeKey}.jpg")
+                    var saved = false
+                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { input ->
+                        val decoded = BitmapFactory.decodeStream(input)
+                        if (decoded != null) {
+                            val scaled = scaleBitmapDown(decoded, 512)
+                            java.io.FileOutputStream(target).use { out ->
+                                scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                            }
+                            if (scaled !== decoded) decoded.recycle()
+                            scaled.recycle()
+                            saved = true
+                        }
+                    }
+                    if (saved) target.absolutePath else null
+                }.getOrNull()
+            }
+            if (!savedPath.isNullOrBlank()) {
+                prefsStore.setCustomAppIcon(appId.routeKey, "file:$savedPath")
+                postNotification(
+                    sourceApp = appId,
+                    sourceLabel = "Appearance",
+                    title = "Icon Updated",
+                    message = "${CamelAppRegistry.get(appId).title} now uses your chosen image.",
+                    severity = CamelNotificationSeverity.INFO
+                )
+            }
+        }
+    }
+
+    private fun scaleBitmapDown(bitmap: Bitmap, maxDim: Int): Bitmap {
+        val w = bitmap.width
+        val h = bitmap.height
+        if (w <= maxDim && h <= maxDim) return bitmap
+        val ratio = minOf(maxDim.toFloat() / w, maxDim.toFloat() / h)
+        return Bitmap.createScaledBitmap(
+            bitmap,
+            (w * ratio).toInt().coerceAtLeast(1),
+            (h * ratio).toInt().coerceAtLeast(1),
+            true
+        )
     }
 
     fun postNotification(

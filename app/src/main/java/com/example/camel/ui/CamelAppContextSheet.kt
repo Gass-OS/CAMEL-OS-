@@ -36,7 +36,10 @@ fun CamelAppContextSheet(
     onToggleDesktopShortcut: (CamelAppId) -> Unit,
     onTogglePanelShortcut: (CamelAppId) -> Unit,
     onOpenInAppManager: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    customIconRef: String? = null,
+    onChangeIcon: ((CamelAppId) -> Unit)? = null,
+    onResetIcon: ((CamelAppId) -> Unit)? = null
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -59,7 +62,12 @@ fun CamelAppContextSheet(
                     modifier = Modifier.size(48.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(app.icon, contentDescription = app.title, tint = Color(app.accentHex))
+                        CamelAppIcon(
+                            app = app,
+                            customIconRef = customIconRef,
+                            modifier = Modifier.size(24.dp),
+                            tint = Color(app.accentHex)
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
@@ -174,6 +182,34 @@ fun CamelAppContextSheet(
                 Icon(Icons.Filled.SettingsApplications, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Manage App & Permissions in OS Settings")
+            }
+
+            if (onChangeIcon != null) {
+                OutlinedButton(
+                    onClick = { onChangeIcon(app.id) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("ctx_change_icon")
+                ) {
+                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Change icon")
+                }
+            }
+
+            if (customIconRef != null && onResetIcon != null) {
+                TextButton(
+                    onClick = { onResetIcon(app.id) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("ctx_reset_icon")
+                ) {
+                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Reset icon to original")
+                }
             }
         }
     }

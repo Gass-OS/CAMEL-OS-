@@ -127,7 +127,8 @@ fun CamelDesktopDashboard(
                         PlasmaDesktopAppIcon(
                             app = app,
                             onClick = { onOpenApp(app.id, null) },
-                            onLongClick = { onLongClickApp(app.id) }
+                            onLongClick = { onLongClickApp(app.id) },
+                            customIconRef = preferences.customAppIcons[app.id.routeKey]
                         )
                     }
                 }
@@ -294,7 +295,8 @@ fun PlasmaDesktopAppIcon(
     app: CamelAppDescriptor,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    customIconRef: String? = null
 ) {
     val accent = Color(app.accentHex)
 
@@ -333,11 +335,11 @@ fun PlasmaDesktopAppIcon(
                             )
                         )
                 ) {
-                    Icon(
-                        app.icon,
-                        contentDescription = app.title,
-                        tint = accent,
-                        modifier = Modifier.size(34.dp)
+                    CamelAppIcon(
+                        app = app,
+                        customIconRef = customIconRef,
+                        modifier = Modifier.size(34.dp),
+                        tint = accent
                     )
                 }
             }
