@@ -100,7 +100,12 @@ class CamelNativeBridge(
         return normalizeOrigin(source.toString()) == expected
     }
 
-    private fun handleMessage(data: String?) {
+    // Internal (not private): the file-private CamelNativeJsInterface below
+    // forwards window.CamelNative.postMessage() here, and a private member is
+    // visible only inside this class. Internal keeps it module-only, not
+    // public API, and it is not @JavascriptInterface, so JS cannot call it
+    // directly. The origin check stays on the WebMessageListener path.
+    internal fun handleMessage(data: String?) {
         if (data.isNullOrBlank()) return
         try {
             val request = JSONObject(data)
