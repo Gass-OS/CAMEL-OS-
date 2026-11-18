@@ -33,14 +33,29 @@ class CamelWebAppHelpersTest {
     }
 
     @Test
-    fun multipleMimeTypesUseOctetStreamWithExtra() {
+    fun multipleMimeTypesUseWildcardTypeWithExtra() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
             .toFileChooserIntent(arrayOf("audio/*", "video/*"), allowMultiple = true)
-        assertEquals("application/octet-stream", intent.type)
+        assertEquals("*/*", intent.type)
         val extras = intent.getStringArrayExtra(Intent.EXTRA_MIME_TYPES)
         assertEquals(2, extras?.size)
         assertTrue(extras!!.contains("audio/*"))
         assertTrue(extras.contains("video/*"))
+    }
+
+    @Test
+    fun extensionOnlyAcceptUsesWildcardType() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .toFileChooserIntent(arrayOf(".mp3,.flac,.wav"), allowMultiple = true)
+        assertEquals("*/*", intent.type)
+        assertEquals(false, intent.hasExtra(Intent.EXTRA_MIME_TYPES))
+    }
+
+    @Test
+    fun chooserIntentIsOpenable() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .toFileChooserIntent(arrayOf("audio/*"), allowMultiple = false)
+        assertTrue(intent.categories.contains(Intent.CATEGORY_OPENABLE))
     }
 
     @Test

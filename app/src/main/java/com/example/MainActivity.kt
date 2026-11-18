@@ -27,6 +27,11 @@ import kotlinx.coroutines.delay
 class MainActivity : ComponentActivity() {
     private var bootPlayer: MediaPlayer? = null
 
+    companion object {
+        @Volatile
+        private var trimCallbacksRegistered = false
+    }
+
     private fun enterImmersiveMode() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).let { controller ->
@@ -40,13 +45,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enterImmersiveMode()
 
-        application.registerComponentCallbacks(object : ComponentCallbacks2 {
-            override fun onConfigurationChanged(newConfig: Configuration) {}
-            override fun onLowMemory() = CamelWebViewPool.onTrimMemory(
-                ComponentCallbacks2.TRIM_MEMORY_COMPLETE
-            )
-            override fun onTrimMemory(level: Int) = CamelWebViewPool.onTrimMemory(level)
-        })
+        if (!trimCallbacksRegistered) {
+            synchronized(this) {
+                if (!trimCallbacksRegistered) {
+                    application.registerComponentCallbacks(object : ComponentCallbacks2 {
+                        override fun onConfigurationChanged(newConfig: Configuration) {}
+                        override fun onLowMemory() = CamelWebViewPool.onTrimMemory(
+                            ComponentCallbacks2.TRIM_MEMORY_COMPLETE
+                        )
+                        override fun onTrimMemory(level: Int) = CamelWebViewPool.onTrimMemory(level)
+                    })
+                    trimCallbacksRegistered = true
+                }
+            }
+        }
 
         // Configure Firebase App Check before any Compose UI, ViewModel, or Firebase operations.
         configureAppCheck(this, intent)

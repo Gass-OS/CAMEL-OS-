@@ -147,18 +147,16 @@ internal fun Intent.toFileChooserIntent(acceptTypes: Array<String>, allowMultipl
         .filter { it.contains("/") }
         .distinct()
         .toList()
-    val hasExplicitExtensions = acceptTypes.any { it.trim().startsWith(".") }
 
     type = when {
         mimeTypes.size == 1 -> mimeTypes.first()
-        mimeTypes.isNotEmpty() -> "application/octet-stream"
-        hasExplicitExtensions -> "application/octet-stream"
         else -> "*/*"
     }
     if (mimeTypes.size > 1) {
         putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
     }
     putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
+    addCategory(Intent.CATEGORY_OPENABLE)
     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
     return this
@@ -166,6 +164,7 @@ internal fun Intent.toFileChooserIntent(acceptTypes: Array<String>, allowMultipl
 
 class CamelWebViewController(
     private val appContext: Context,
+    val folder: String,
     private val host: String,
     private val loader: WebViewAssetLoader
 ) {
@@ -190,11 +189,18 @@ class CamelWebViewController(
     fun attach(activity: Context) {
         attached = true
         context.setBaseContext(activity)
+        if (::view.isInitialized && folder != "recorder") view.onResume()
     }
 
     fun detach() {
         attached = false
-        context.setBaseContext(appContext)
+        if (::view.isInitialized) {
+            if (!playingAudio && folder != "recorder") view.onPause()
+            context.setBaseContext(appContext)
+            if (folder == "camera") CamelWebViewPool.discard(folder)
+        } else {
+            context.setBaseContext(appContext)
+        }
     }
 
     private inner class CamelAudioState {
@@ -433,11 +439,11 @@ object CamelWebViewPool {
     private data class Entry(val controller: CamelWebViewController, val host: String)
 
     private val entries = mutableMapOf<String, Entry>()
-    private var trimLevel: Int = ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
 
     fun onTrimMemory(level: Int) {
-        trimLevel = level
-        if (level < ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) return
+        if (level != ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL &&
+            level < ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+        ) return
         val victims = synchronized(this) {
             entries.filter { (_, entry) ->
                 !entry.controller.attached && !entry.controller.playingAudio
@@ -446,14 +452,6 @@ object CamelWebViewPool {
         if (victims.isEmpty()) return
         Log.w(TAG, "TRIM_MEMORY level=$level releasing idle WebViews: $victims")
         victims.forEach(::discard)
-    }
-
-    @Synchronized
-    fun suspendIdle(folder: String) {
-        val controller = entries[folder]?.controller ?: return
-        if (controller.attached || controller.playingAudio) return
-        // Intentionally no pauseTimers/onPause: those silently stop audio playback.
-        // Idle WebViews are released only on explicit close or memory pressure.
     }
 
     @Synchronized
@@ -466,7 +464,7 @@ object CamelWebViewPool {
         val existing = entries[folder]
         if (existing != null && existing.host == host) return existing.controller
         existing?.controller?.destroy()
-        val controller = CamelWebViewController(context, host, loader).also { it.create() }
+        val controller = CamelWebViewController(context, folder, host, loader).also { it.create() }
         entries[folder] = Entry(controller, host)
         return controller
     }
@@ -530,7 +528,11 @@ fun CamelWebApp(folder: String, onClose: () -> Unit) {
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
-        factory = { controller.view },
+        factory = { ctx ->
+            val pooled = controller.view
+            (pooled.parent as? android.view.ViewGroup)?.removeView(pooled)
+            pooled
+        },
         onRelease = {
             // WebViews are pooled for the lifetime of the process. Detaching from the
             // Compose hierarchy during navigation must never destroy native state.

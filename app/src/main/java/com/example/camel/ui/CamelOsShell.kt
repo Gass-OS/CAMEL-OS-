@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -302,7 +303,9 @@ private fun CamelBaseViewport(
                     else -> {
                         val folder = app?.webFolder()
                         if (folder != null) {
-                            CamelWebApp(folder = folder, onClose = osViewModel::goHome)
+                            key(folder) {
+                                CamelWebApp(folder = folder, onClose = osViewModel::goHome)
+                            }
                         } else {
                             Box(modifier = Modifier.fillMaxSize())
                         }
