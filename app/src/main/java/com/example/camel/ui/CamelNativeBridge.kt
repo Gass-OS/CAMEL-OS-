@@ -1,7 +1,10 @@
 package com.example.camel.ui
 
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
@@ -44,6 +47,7 @@ class CamelNativeBridge(
     private val modules = mutableMapOf<String, CamelNativeHandler>()
     private var scriptHandler: ScriptHandler? = null
     private var replyProxy: JavaScriptReplyProxy? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun registerModule(name: String, handler: CamelNativeHandler) {
         modules[name] = handler
@@ -54,10 +58,13 @@ class CamelNativeBridge(
             Log.w(BRIDGE_TAG, "WEB_MESSAGE_LISTENER unsupported; bridge disabled for $origin")
             return false
         }
+        // Expose a JavaScript interface for the page to send messages
+        webView.addJavascriptInterface(CamelNativeJsInterface(this), "CamelNative")
+        // Also listen for postMessage from the page
         WebViewCompat.addWebMessageListener(
             webView,
             "CamelNative",
-            setOf(origin),
+            setOf(normalizeOrigin(origin)),
             object : WebViewCompat.WebMessageListener {
                 override fun onPostMessage(
                     view: WebView,
@@ -66,8 +73,8 @@ class CamelNativeBridge(
                     isMainFrame: Boolean,
                     replyProxy: JavaScriptReplyProxy
                 ) {
-                    if (sourceOrigin.toString() != origin || !isMainFrame) {
-                        Log.w(BRIDGE_TAG, "Rejected bridge message from $sourceOrigin mainFrame=$isMainFrame")
+                    if (!originMatches(normalizeOrigin(origin), sourceOrigin)) {
+                        Log.w(BRIDGE_TAG, "Rejected bridge message from $sourceOrigin")
                         return
                     }
                     this@CamelNativeBridge.replyProxy = replyProxy
@@ -79,12 +86,18 @@ class CamelNativeBridge(
             scriptHandler = WebViewCompat.addDocumentStartJavaScript(
                 webView,
                 CAMEL_MEDIA_OBSERVER_JS,
-                setOf("*://*.camelos.local")
+                setOf("https://*.camelos.local")
             )
         } else {
             Log.w(BRIDGE_TAG, "DOCUMENT_START_SCRIPT unsupported; media observer disabled")
         }
         return true
+    }
+
+    private fun normalizeOrigin(o: String): String = o.trim().removeSuffix("/")
+
+    private fun originMatches(expected: String, source: Uri): Boolean {
+        return normalizeOrigin(source.toString()) == expected
     }
 
     private fun handleMessage(data: String?) {
@@ -107,21 +120,24 @@ class CamelNativeBridge(
                     put("error", "Unknown module: $module")
                 }
             }
-            replyProxy?.postMessage(response.toString())
+            // Post reply on main thread for thread safety
+            mainHandler.post { replyProxy?.postMessage(response.toString()) }
         } catch (e: Exception) {
             Log.e(BRIDGE_TAG, "Bad bridge message", e)
-            try {
-                replyProxy?.postMessage(
-                    JSONObject().put("ok", false).put("error", "Malformed request").toString()
-                )
-            } catch (ignored: Exception) {
-                Log.w(BRIDGE_TAG, "Could not send error reply", ignored)
+            mainHandler.post {
+                try {
+                    replyProxy?.postMessage(
+                        JSONObject().put("ok", false).put("error", "Malformed request").toString()
+                    )
+                } catch (ignored: Exception) {
+                    Log.w(BRIDGE_TAG, "Could not send error reply", ignored)
+                }
             }
         }
     }
 
     fun postToPage(payload: JSONObject) {
-        replyProxy?.postMessage(payload.toString())
+        mainHandler.post { replyProxy?.postMessage(payload.toString()) }
     }
 
     fun close() {
@@ -129,6 +145,16 @@ class CamelNativeBridge(
         scriptHandler = null
         replyProxy = null
         modules.clear()
+    }
+}
+
+private class CamelNativeJsInterface @JvmOverloads constructor(
+    private val bridge: CamelNativeBridge
+) {
+    @JavascriptInterface
+    fun postMessage(message: String) {
+        // Called from JS via window.CamelNative.postMessage(message)
+        bridge.handleMessage(message)
     }
 }
 

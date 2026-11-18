@@ -429,9 +429,12 @@ class CamelWebViewController(
                 keyCode == android.view.KeyEvent.KEYCODE_BACK &&
                     event.action == android.view.KeyEvent.ACTION_DOWN && canGoBack()
             }
-            loadUrl("https://$host/index.html")
         }
-        installNativeBridge()
+        runCatching { installNativeBridge() }
+            .onFailure { e ->
+                Log.e(TAG, "Native bridge installation failed; continuing without bridge", e)
+            }
+        view.loadUrl("https://$host/index.html")
         return view
     }
 
