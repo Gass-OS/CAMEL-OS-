@@ -26,6 +26,7 @@ fun EuropassModuleScreen(
     onConsumedRequestedTab: () -> Unit,
     onPostOsNotification: (title: String, message: String) -> Unit,
     onExitModule: () -> Unit,
+    backEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     MyApplicationTheme {
@@ -54,7 +55,7 @@ fun EuropassModuleScreen(
             }
         }
 
-        BackHandler {
+        BackHandler(enabled = backEnabled) {
             if (currentTab != EuropassTab.Studio) {
                 currentTab = EuropassTab.Studio
             } else {

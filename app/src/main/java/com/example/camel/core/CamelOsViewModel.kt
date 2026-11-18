@@ -38,6 +38,21 @@ class CamelOsViewModel(application: Application) : AndroidViewModel(application)
     private val _runningApps = MutableStateFlow<List<CamelAppId>>(emptyList())
     val runningApps: StateFlow<List<CamelAppId>> = _runningApps.asStateFlow()
 
+    // Multi-window desktop: one window per open app. _runningApps stays the
+    // open-apps source (MRU order, used by the top panel); _windows is the
+    // stacking/z-order list. _activeApp is the focused window's app.
+    private val _windows = MutableStateFlow<List<CamelWindow>>(emptyList())
+    val windows: StateFlow<List<CamelWindow>> = _windows.asStateFlow()
+
+    // Transient message shown as a banner on the desktop (e.g. the window
+    // cap). Null means no message; the shell auto-dismisses it.
+    private val _windowNotice = MutableStateFlow<String?>(null)
+    val windowNotice: StateFlow<String?> = _windowNotice.asStateFlow()
+
+    fun dismissWindowNotice() {
+        _windowNotice.value = null
+    }
+
     private val _isDrawerOpen = MutableStateFlow(false)
     val isDrawerOpen: StateFlow<Boolean> = _isDrawerOpen.asStateFlow()
 
@@ -106,10 +121,184 @@ class CamelOsViewModel(application: Application) : AndroidViewModel(application)
         _isSettingsOpen.value = false
         _isControlCenterOpen.value = false
         _appContextMenuTarget.value = null
+
+        // Opening an already-open app focuses its window instead of
+        // opening a duplicate.
+        if (_windows.value.any { it.appId == appId }) {
+            focusWindow(appId)
+            return
+        }
+
+        // v1 cap: at most MAX_WINDOWS simultaneous windows. The 5th open is
+        // rejected with a visible message — never a silent eviction.
+        if (_windows.value.size >= MAX_WINDOWS) {
+            _windowNotice.value =
+                "Maximum $MAX_WINDOWS windows open — close one first."
+            return
+        }
+
+        // The first window opens maximised, so single-app use feels exactly
+        // like today's fullscreen app. Later windows open cascaded on top.
+        val bounds = cascadeBounds(_windows.value.size)
+        val state = if (_windows.value.isEmpty()) {
+            CamelWindowState.MAXIMISED
+        } else {
+            CamelWindowState.NORMAL
+        }
+        val window = CamelWindow(
+            appId = appId,
+            bounds = bounds,
+            z = nextWindowZ(_windows.value),
+            state = state
+        )
+        _windows.update { it + window }
         _activeApp.value = appId
 
         _runningApps.update { current ->
             (listOf(appId) + current.filterNot { it == appId }).distinct()
+        }
+    }
+
+    /** Topmost visible window in render order (pinned windows stack above
+     * the rest, then by z). Null when every window is minimised. */
+    private fun topVisibleWindow(windows: List<CamelWindow>): CamelWindow? =
+        windows.filter { it.state != CamelWindowState.MINIMISED }
+            .sortedWith(compareBy({ it.pinned }, { it.z }))
+            .lastOrNull()
+
+    private fun nextWindowZ(windows: List<CamelWindow>): Int =
+        (windows.maxOfOrNull { it.z } ?: 0) + 1
+
+    /** Focus a window: raise it to the top and restore it if minimised
+     * (back to whatever state it had before minimising). */
+    fun focusWindow(appId: CamelAppId) {
+        val z = nextWindowZ(_windows.value)
+        _windows.update { list ->
+            list.map { window ->
+                if (window.appId != appId) {
+                    window
+                } else if (window.state == CamelWindowState.MINIMISED) {
+                    // Restore to whatever state it had before minimising.
+                    window.copy(
+                        state = window.stateBeforeMinimise ?: CamelWindowState.NORMAL,
+                        stateBeforeMinimise = null,
+                        z = z
+                    )
+                } else {
+                    // Visible window: raise it only — a maximised window
+                    // must stay maximised when it is merely focused.
+                    window.copy(z = z)
+                }
+            }
+        }
+        _activeApp.value = appId
+    }
+
+    /** Minimise a window. Its WebView stays acquired in the pool (paused
+     * unless it is playing audio or is the recorder) and is restored on
+     * focus — minimising never destroys app state. */
+    fun minimiseWindow(appId: CamelAppId) {
+        _windows.update { list ->
+            list.map { window ->
+                if (window.appId != appId || window.state == CamelWindowState.MINIMISED) {
+                    window
+                } else {
+                    window.copy(
+                        state = CamelWindowState.MINIMISED,
+                        stateBeforeMinimise = window.state
+                    )
+                }
+            }
+        }
+        if (_activeApp.value == appId) {
+            _activeApp.value = topVisibleWindow(_windows.value)?.appId
+        }
+    }
+
+    /** Maximise/restore is the window zoom in v1: fill the desktop area,
+     * or return to the previous floating bounds. */
+    fun toggleMaximiseWindow(appId: CamelAppId) {
+        val z = nextWindowZ(_windows.value)
+        _windows.update { list ->
+            list.map { window ->
+                if (window.appId != appId) {
+                    window
+                } else if (window.state == CamelWindowState.MAXIMISED) {
+                    window.copy(state = CamelWindowState.NORMAL, z = z)
+                } else {
+                    window.copy(state = CamelWindowState.MAXIMISED, z = z)
+                }
+            }
+        }
+        _activeApp.value = appId
+    }
+
+    /** Move a floating window by a fraction of the desktop area. Maximised
+     * windows do not move (double-tap the title bar to restore first). */
+    fun moveWindow(appId: CamelAppId, dxFrac: Float, dyFrac: Float) {
+        _windows.update { list ->
+            list.map { window ->
+                if (window.appId != appId || window.state != CamelWindowState.NORMAL) {
+                    window
+                } else {
+                    window.copy(
+                        bounds = window.bounds.copy(
+                            x = window.bounds.x + dxFrac,
+                            y = window.bounds.y + dyFrac
+                        ).clamped()
+                    )
+                }
+            }
+        }
+        _activeApp.value = appId
+    }
+
+    /** Resize a floating window from its bottom-right corner, by a fraction
+     * of the desktop area. The bounds clamp keeps a 0.25 minimum size. */
+    fun resizeWindow(appId: CamelAppId, dwFrac: Float, dhFrac: Float) {
+        _windows.update { list ->
+            list.map { window ->
+                if (window.appId != appId || window.state != CamelWindowState.NORMAL) {
+                    window
+                } else {
+                    window.copy(
+                        bounds = window.bounds.copy(
+                            width = window.bounds.width + dwFrac,
+                            height = window.bounds.height + dhFrac
+                        ).clamped()
+                    )
+                }
+            }
+        }
+        _activeApp.value = appId
+    }
+
+    /** Snap a window to a half (2-column) or a quadrant (2x2). Snapping
+     * always leaves the window in NORMAL state at the snapped bounds. */
+    fun snapWindow(appId: CamelAppId, snap: CamelWindowSnap) {
+        _windows.update { list ->
+            list.map { window ->
+                if (window.appId != appId) {
+                    window
+                } else {
+                    window.copy(
+                        bounds = snapBounds(snap),
+                        state = CamelWindowState.NORMAL,
+                        stateBeforeMinimise = null
+                    )
+                }
+            }
+        }
+        _activeApp.value = appId
+    }
+
+    /** Pin keeps a window above the others when focus changes. Pinning
+     * does not change focus. */
+    fun togglePinWindow(appId: CamelAppId) {
+        _windows.update { list ->
+            list.map { window ->
+                if (window.appId != appId) window else window.copy(pinned = !window.pinned)
+            }
         }
     }
 
@@ -119,12 +308,30 @@ class CamelOsViewModel(application: Application) : AndroidViewModel(application)
 
     fun closeApp(appId: CamelAppId) {
         _runningApps.update { list -> list.filterNot { it == appId } }
+        _windows.update { list -> list.filterNot { it.appId == appId } }
         if (_activeApp.value == appId) {
-            _activeApp.value = _runningApps.value.firstOrNull()
+            _activeApp.value = topVisibleWindow(_windows.value)?.appId
         }
     }
 
+    /**
+     * Go home: every window is minimised (not closed — their WebViews stay
+     * acquired and their state is preserved) and the desktop is shown.
+     * The windows stay reachable from the taskbar.
+     */
     fun goHome() {
+        _windows.update { list ->
+            list.map { window ->
+                if (window.state == CamelWindowState.MINIMISED) {
+                    window
+                } else {
+                    window.copy(
+                        state = CamelWindowState.MINIMISED,
+                        stateBeforeMinimise = window.state
+                    )
+                }
+            }
+        }
         _activeApp.value = null
         _isDrawerOpen.value = false
         _isSettingsOpen.value = false

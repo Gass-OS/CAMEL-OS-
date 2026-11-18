@@ -498,7 +498,7 @@ fun releaseCamelWebView(folder: String) = CamelWebViewPool.discard(folder)
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun CamelWebApp(folder: String, onClose: () -> Unit) {
+fun CamelWebApp(folder: String, onClose: () -> Unit, backEnabled: Boolean = true) {
     val context = LocalContext.current
     val appContext = remember { context.applicationContext }
     val host = remember(folder) { "${folder.lowercase().replace("_", "-")}.camelos.local" }
@@ -538,7 +538,7 @@ fun CamelWebApp(folder: String, onClose: () -> Unit) {
         }
     }
 
-    BackHandler {
+    BackHandler(enabled = backEnabled) {
         val w = controller.view
         if (w.canGoBack()) w.goBack() else onClose()
     }

@@ -7,10 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,20 +43,17 @@ import com.example.camel.core.CamelOsPreferences
 import com.example.camel.core.CamelOsViewModel
 import com.example.camel.core.CamelPanelColour
 import com.example.camel.core.CamelPanelWidth
+import com.example.camel.core.CamelWindow
+import com.example.camel.core.CamelWindowState
 import com.example.camel.services.CamelSystemTelemetry
 import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.components.EuropassTab
 import com.example.viewmodel.EuropassViewModel
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-private enum class CamelViewportMode {
-    DESKTOP,
-    DRAWER,
-    SETTINGS,
-    MODULE
-}
 
 private fun Modifier.consumingOverlay(): Modifier = this.pointerInput(Unit) {
     awaitPointerEventScope {
@@ -78,6 +73,7 @@ fun CamelOsShell(
     val telemetry by osViewModel.telemetry.collectAsStateWithLifecycle()
     val activeApp by osViewModel.activeApp.collectAsStateWithLifecycle()
     val runningApps by osViewModel.runningApps.collectAsStateWithLifecycle()
+    val windows by osViewModel.windows.collectAsStateWithLifecycle()
     val isDrawerOpen by osViewModel.isDrawerOpen.collectAsStateWithLifecycle()
     val isSettingsOpen by osViewModel.isSettingsOpen.collectAsStateWithLifecycle()
     val isControlCenterOpen by osViewModel.isControlCenterOpen.collectAsStateWithLifecycle()
@@ -119,7 +115,11 @@ fun CamelOsShell(
             pendingApp != null -> osViewModel.dismissPendingIntegrationSheet()
             isDrawerOpen -> osViewModel.toggleDrawer(false)
             isSettingsOpen -> osViewModel.openSettings(false)
-            activeApp != null -> osViewModel.goHome()
+            // Back with a focused window minimises that window — its
+            // WebView stays acquired, so state and media are preserved.
+            // Back with no window focused falls through to the exit
+            // dialog below, exactly as today.
+            activeApp != null -> osViewModel.minimiseWindow(activeApp)
             else -> showExitConfirmation = true
         }
     }
@@ -163,13 +163,14 @@ fun CamelOsShell(
                     .fillMaxWidth()
 
                 Box(modifier = viewportInsetsModifier) {
-                    CamelBaseViewport(
-                        activeApp = activeApp,
+                    CamelDesktopArea(
+                        windows = windows,
                         prefs = prefs,
                         osViewModel = osViewModel,
                         europassViewModel = europassViewModel,
                         telemetry = telemetry,
-                        onLongPressEmptySpace = { showDesktopContextMenu = true }
+                        onLongPressEmptySpace = { showDesktopContextMenu = true },
+                        onCloseRunningApp = closeRunningApp
                     )
 
                     if (isDrawerOpen) {
@@ -218,6 +219,19 @@ fun CamelOsShell(
                             )
                         }
                     }
+                }
+
+                // Bottom taskbar: one item per open window. It appears when
+                // the first window opens and disappears with the last one.
+                if (windows.isNotEmpty()) {
+                    CamelTaskbar(
+                        windows = windows,
+                        focusedAppId = activeApp,
+                        customAppIcons = prefs.customAppIcons,
+                        onSelect = { osViewModel.focusWindow(it) },
+                        onClose = closeRunningApp,
+                        onShowDesktop = { osViewModel.goHome() }
+                    )
                 }
             }
 
@@ -323,66 +337,166 @@ fun CamelOsShell(
     }
 }
 
+/**
+ * Multi-window desktop area: the dashboard is always the background layer
+ * and open windows float on top of it, like an XFCE desktop. Minimised
+ * windows are not composed at all — their WebView is detached (paused
+ * unless it is playing audio or recording) while the pool keeps it
+ * acquired, so focusing the window restores it with its state intact.
+ * A window's content is the existing module rendering, unchanged.
+ */
 @Composable
-private fun CamelBaseViewport(
-    activeApp: CamelAppId?,
+private fun CamelDesktopArea(
+    windows: List<CamelWindow>,
     prefs: CamelOsPreferences,
     osViewModel: CamelOsViewModel,
     europassViewModel: EuropassViewModel,
     telemetry: CamelSystemTelemetry,
-    onLongPressEmptySpace: () -> Unit
+    onLongPressEmptySpace: () -> Unit,
+    onCloseRunningApp: (CamelAppId) -> Unit
 ) {
+    val activeApp by osViewModel.activeApp.collectAsStateWithLifecycle()
+    val windowNotice by osViewModel.windowNotice.collectAsStateWithLifecycle()
     val requestedEuropassTab by osViewModel.requestedEuropassTab.collectAsStateWithLifecycle()
-    val baseMode = if (activeApp != null) CamelViewportMode.MODULE else CamelViewportMode.DESKTOP
 
-    AnimatedContent(
-        targetState = baseMode,
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
-        label = "camel_base_viewport_transition"
-    ) { currentMode ->
-        when (currentMode) {
-            CamelViewportMode.DESKTOP -> CamelDesktopDashboard(
-                preferences = prefs,
-                telemetry = telemetry,
-                onOpenApp = osViewModel::openApp,
-                onLongClickApp = osViewModel::openAppContextMenu,
-                onOpenControlCenter = { osViewModel.toggleControlCenter(true) },
-                onLongPressEmptySpace = onLongPressEmptySpace
-            )
+    // The window-cap message dismisses itself after 3 seconds.
+    LaunchedEffect(windowNotice) {
+        if (windowNotice != null) {
+            delay(3_000)
+            osViewModel.dismissWindowNotice()
+        }
+    }
 
-            CamelViewportMode.MODULE -> {
-                val app = activeApp
-                when (app) {
-                    CamelAppId.EUROPASS -> EuropassModuleScreen(
-                        viewModel = europassViewModel,
-                        requestedTab = requestedEuropassTab,
-                        onConsumedRequestedTab = osViewModel::consumeRequestedEuropassTab,
-                        onPostOsNotification = { title, message ->
-                            osViewModel.postNotification(
-                                sourceApp = CamelAppId.EUROPASS,
-                                sourceLabel = "Europass",
-                                title = title,
-                                message = message,
-                                severity = CamelNotificationSeverity.SUCCESS
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }
+        val heightPx = with(density) { maxHeight.toPx() }
+
+        CamelDesktopDashboard(
+            preferences = prefs,
+            telemetry = telemetry,
+            onOpenApp = osViewModel::openApp,
+            onLongClickApp = osViewModel::openAppContextMenu,
+            onOpenControlCenter = { osViewModel.toggleControlCenter(true) },
+            onLongPressEmptySpace = onLongPressEmptySpace
+        )
+
+        // Render order: non-pinned windows by z, then pinned windows by z,
+        // so pinned windows always stack above the rest.
+        val visibleWindows = windows
+            .filter { it.state != CamelWindowState.MINIMISED }
+            .sortedWith(compareBy({ it.pinned }, { it.z }))
+        visibleWindows.forEach { window ->
+            key(window.appId) {
+                val descriptor = CamelAppRegistry.get(window.appId)
+                val frameModifier = if (window.state == CamelWindowState.MAXIMISED) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier
+                        .offset {
+                            IntOffset(
+                                (window.bounds.x * widthPx).roundToInt(),
+                                (window.bounds.y * heightPx).roundToInt()
                             )
-                        },
-                        onExitModule = osViewModel::goHome
-                    )
-
-                    else -> {
-                        val folder = app?.webFolder()
-                        if (folder != null) {
-                            key(folder) {
-                                CamelWebApp(folder = folder, onClose = osViewModel::goHome)
-                            }
-                        } else {
-                            Box(modifier = Modifier.fillMaxSize())
                         }
-                    }
+                        .size(
+                            width = with(density) { (window.bounds.width * widthPx).toDp() },
+                            height = with(density) { (window.bounds.height * heightPx).toDp() }
+                        )
+                }
+                CamelWindowFrame(
+                    window = window,
+                    descriptor = descriptor,
+                    isFocused = window.appId == activeApp,
+                    desktopWidthPx = widthPx,
+                    desktopHeightPx = heightPx,
+                    customIconRef = prefs.customAppIcons[window.appId.routeKey],
+                    onFocus = { osViewModel.focusWindow(window.appId) },
+                    onMove = { dx, dy -> osViewModel.moveWindow(window.appId, dx, dy) },
+                    onResize = { dw, dh -> osViewModel.resizeWindow(window.appId, dw, dh) },
+                    onMinimise = { osViewModel.minimiseWindow(window.appId) },
+                    onToggleMaximise = { osViewModel.toggleMaximiseWindow(window.appId) },
+                    onClose = { onCloseRunningApp(window.appId) },
+                    onSnap = { snap -> osViewModel.snapWindow(window.appId, snap) },
+                    onTogglePin = { osViewModel.togglePinWindow(window.appId) },
+                    modifier = frameModifier
+                ) {
+                    CamelWindowContent(
+                        appId = window.appId,
+                        isFocused = window.appId == activeApp,
+                        osViewModel = osViewModel,
+                        europassViewModel = europassViewModel,
+                        requestedEuropassTab = requestedEuropassTab
+                    )
                 }
             }
+        }
 
-            else -> Box(modifier = Modifier.fillMaxSize())
+        val notice = windowNotice
+        if (notice != null) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                shape = RoundedCornerShape(12.dp),
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp)
+                    .testTag("window_notice")
+            ) {
+                Text(
+                    text = notice,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                )
+            }
+        }
+    }
+}
+
+/** One window's content: the existing module rendering, unchanged. The
+ * Back button inside a window is handled by the focused window only
+ * (backEnabled): a WebView goes back in its history, otherwise the window
+ * is minimised; Europass returns to its Studio tab, otherwise minimises. */
+@Composable
+private fun CamelWindowContent(
+    appId: CamelAppId,
+    isFocused: Boolean,
+    osViewModel: CamelOsViewModel,
+    europassViewModel: EuropassViewModel,
+    requestedEuropassTab: EuropassTab?
+) {
+    when (appId) {
+        CamelAppId.EUROPASS -> EuropassModuleScreen(
+            viewModel = europassViewModel,
+            requestedTab = requestedEuropassTab,
+            onConsumedRequestedTab = osViewModel::consumeRequestedEuropassTab,
+            onPostOsNotification = { title, message ->
+                osViewModel.postNotification(
+                    sourceApp = CamelAppId.EUROPASS,
+                    sourceLabel = "Europass",
+                    title = title,
+                    message = message,
+                    severity = CamelNotificationSeverity.SUCCESS
+                )
+            },
+            onExitModule = { osViewModel.minimiseWindow(CamelAppId.EUROPASS) },
+            backEnabled = isFocused
+        )
+
+        else -> {
+            val folder = appId.webFolder()
+            if (folder != null) {
+                key(folder) {
+                    CamelWebApp(
+                        folder = folder,
+                        onClose = { osViewModel.minimiseWindow(appId) },
+                        backEnabled = isFocused
+                    )
+                }
+            } else {
+                Box(modifier = Modifier.fillMaxSize())
+            }
         }
     }
 }
