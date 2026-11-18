@@ -19,9 +19,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -51,6 +54,15 @@ private enum class CamelViewportMode {
     MODULE
 }
 
+private fun Modifier.consumingOverlay(): Modifier = this.pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Final)
+            event.changes.forEach { it.consume() }
+        }
+    }
+}
+
 @Composable
 fun CamelOsShell(
     osViewModel: CamelOsViewModel,
@@ -67,12 +79,15 @@ fun CamelOsShell(
     val notifications by osViewModel.notifications.collectAsStateWithLifecycle()
     val pendingApp by osViewModel.pendingIntegrationApp.collectAsStateWithLifecycle()
     val contextMenuTarget by osViewModel.appContextMenuTarget.collectAsStateWithLifecycle()
-    val requestedEuropassTab by osViewModel.requestedEuropassTab.collectAsStateWithLifecycle()
-
     val unreadCount = remember(notifications) { notifications.count { it.isUnread } }
     var showExitConfirmation by remember { mutableStateOf(false) }
     var showDesktopContextMenu by remember { mutableStateOf(false) }
     val activity = LocalContext.current as? Activity
+
+    val closeRunningApp = { appId: CamelAppId ->
+         appId.webFolder()?.let(::releaseCamelWebView)
+         osViewModel.closeApp(appId)
+     }
 
     BackHandler(enabled = true) {
         when {
@@ -96,13 +111,6 @@ fun CamelOsShell(
             contentColor = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.fillMaxSize()
         ) {
-            val viewportMode = when {
-                isDrawerOpen -> CamelViewportMode.DRAWER
-                isSettingsOpen -> CamelViewportMode.SETTINGS
-                activeApp != null -> CamelViewportMode.MODULE
-                else -> CamelViewportMode.DESKTOP
-            }
-
             Column(modifier = Modifier.fillMaxSize()) {
                 // Top KDE Plasma-Style Panel (Launcher, Tools, Pinned/Running Apps, System Tray)
                 CamelTopPlasmaPanel(
@@ -116,7 +124,7 @@ fun CamelOsShell(
                     onToggleDrawer = { osViewModel.toggleDrawer() },
                     onOpenSettings = { osViewModel.openSettings(true) },
                     onSelectApp = { osViewModel.openApp(it) },
-                    onCloseRunningApp = osViewModel::closeApp,
+                    onCloseRunningApp = closeRunningApp,
                     onOpenControlCenter = { osViewModel.toggleControlCenter(true) }
                 )
 
@@ -125,17 +133,49 @@ fun CamelOsShell(
                     .fillMaxWidth()
 
                 Box(modifier = viewportInsetsModifier) {
-                    CamelViewportContent(
-                        mode = viewportMode,
+                    CamelBaseViewport(
                         activeApp = activeApp,
                         prefs = prefs,
                         osViewModel = osViewModel,
                         europassViewModel = europassViewModel,
                         telemetry = telemetry,
-                        searchQuery = searchQuery,
-                        requestedEuropassTab = requestedEuropassTab,
                         onLongPressEmptySpace = { showDesktopContextMenu = true }
                     )
+
+                    if (isDrawerOpen) {
+                        Box(Modifier.fillMaxSize().consumingOverlay()) {
+                            CamelAppDrawer(
+                                searchQuery = searchQuery,
+                                disabledApps = prefs.disabledApps,
+                                onSearchQueryChange = osViewModel::updateSearchQuery,
+                                onSelectApp = { osViewModel.openApp(it) },
+                                onLongClickApp = osViewModel::openAppContextMenu,
+                                onOpenSettings = { osViewModel.openSettings(true) },
+                                onCloseDrawer = { osViewModel.toggleDrawer(false) }
+                            )
+                        }
+                    }
+
+                    if (isSettingsOpen) {
+                        Box(Modifier.fillMaxSize().consumingOverlay()) {
+                            CamelSettingsScreen(
+                                preferences = prefs,
+                                onSelectTheme = osViewModel::setThemePreset,
+                                onSelectWallpaper = osViewModel::setWallpaperPreset,
+                                onPickCustomWallpaperUri = osViewModel::setCustomWallpaperFromUri,
+                                onChangeWallpaperDim = osViewModel::setWallpaperDimAlpha,
+                                onSelectFont = osViewModel::setFontStyle,
+                                onToggleShowClock = osViewModel::setShowClockOnDesktop,
+                                onToggleShowTelemetry = osViewModel::setShowTelemetry,
+                                onClearDesktopShortcuts = osViewModel::clearDesktopShortcuts,
+                                onToggleDesktopShortcut = osViewModel::toggleDesktopShortcut,
+                                onTogglePanelShortcut = osViewModel::togglePanelShortcut,
+                                onToggleAppEnabled = osViewModel::toggleAppEnabled,
+                                onOpenApp = { osViewModel.openApp(it) },
+                                onCloseSettings = { osViewModel.openSettings(false) }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -215,21 +255,21 @@ fun CamelOsShell(
 }
 
 @Composable
-private fun CamelViewportContent(
-    mode: CamelViewportMode,
+private fun CamelBaseViewport(
     activeApp: CamelAppId?,
     prefs: CamelOsPreferences,
     osViewModel: CamelOsViewModel,
     europassViewModel: EuropassViewModel,
     telemetry: CamelSystemTelemetry,
-    searchQuery: String,
-    requestedEuropassTab: com.example.ui.components.EuropassTab?,
     onLongPressEmptySpace: () -> Unit
 ) {
+    val requestedEuropassTab by osViewModel.requestedEuropassTab.collectAsStateWithLifecycle()
+    val baseMode = if (activeApp != null) CamelViewportMode.MODULE else CamelViewportMode.DESKTOP
+
     AnimatedContent(
-        targetState = mode,
+        targetState = baseMode,
         transitionSpec = { fadeIn() togetherWith fadeOut() },
-        label = "camel_viewport_transition"
+        label = "camel_base_viewport_transition"
     ) { currentMode ->
         when (currentMode) {
             CamelViewportMode.DESKTOP -> CamelDesktopDashboard(
@@ -241,35 +281,9 @@ private fun CamelViewportContent(
                 onLongPressEmptySpace = onLongPressEmptySpace
             )
 
-            CamelViewportMode.DRAWER -> CamelAppDrawer(
-                searchQuery = searchQuery,
-                disabledApps = prefs.disabledApps,
-                onSearchQueryChange = osViewModel::updateSearchQuery,
-                onSelectApp = { osViewModel.openApp(it) },
-                onLongClickApp = osViewModel::openAppContextMenu,
-                onOpenSettings = { osViewModel.openSettings(true) },
-                onCloseDrawer = { osViewModel.toggleDrawer(false) }
-            )
-
-            CamelViewportMode.SETTINGS -> CamelSettingsScreen(
-                preferences = prefs,
-                onSelectTheme = osViewModel::setThemePreset,
-                onSelectWallpaper = osViewModel::setWallpaperPreset,
-                onPickCustomWallpaperUri = osViewModel::setCustomWallpaperFromUri,
-                onChangeWallpaperDim = osViewModel::setWallpaperDimAlpha,
-                onSelectFont = osViewModel::setFontStyle,
-                onToggleShowClock = osViewModel::setShowClockOnDesktop,
-                onToggleShowTelemetry = osViewModel::setShowTelemetry,
-                onClearDesktopShortcuts = osViewModel::clearDesktopShortcuts,
-                onToggleDesktopShortcut = osViewModel::toggleDesktopShortcut,
-                onTogglePanelShortcut = osViewModel::togglePanelShortcut,
-                onToggleAppEnabled = osViewModel::toggleAppEnabled,
-                onOpenApp = { osViewModel.openApp(it) },
-                onCloseSettings = { osViewModel.openSettings(false) }
-            )
-
             CamelViewportMode.MODULE -> {
-                when (activeApp) {
+                val app = activeApp
+                when (app) {
                     CamelAppId.EUROPASS -> EuropassModuleScreen(
                         viewModel = europassViewModel,
                         requestedTab = requestedEuropassTab,
@@ -287,18 +301,19 @@ private fun CamelViewportContent(
                     )
 
                     else -> {
-                        val folder = activeApp?.webFolder()
+                        val folder = app?.webFolder()
                         if (folder != null) {
-                            CamelWebApp(
-                                folder = folder,
-                                onClose = osViewModel::goHome
-                            )
+                            key(folder) {
+                                CamelWebApp(folder = folder, onClose = osViewModel::goHome)
+                            }
                         } else {
                             Box(modifier = Modifier.fillMaxSize())
                         }
                     }
                 }
             }
+
+            else -> Box(modifier = Modifier.fillMaxSize())
         }
     }
 }
@@ -319,6 +334,7 @@ private fun CamelTopPlasmaPanel(
     onOpenControlCenter: () -> Unit
 ) {
     var clockMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var switcherExpanded by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         while (true) {
             clockMillis = System.currentTimeMillis()
@@ -391,6 +407,67 @@ private fun CamelTopPlasmaPanel(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (runningApps.size > 1) {
+                    item(key = "app_switcher") {
+                        Box {
+                            Surface(
+                                onClick = { switcherExpanded = true },
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.height(48.dp).testTag("top_panel_app_switcher")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Apps,
+                                        contentDescription = "Open apps",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(3.dp))
+                                    Text(
+                                        "${runningApps.size}",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = switcherExpanded,
+                                onDismissRequest = { switcherExpanded = false },
+                                modifier = Modifier.widthIn(max = 260.dp)
+                            ) {
+                                runningApps.forEach { appId ->
+                                    val descriptor = CamelAppRegistry.get(appId)
+                                    DropdownMenuItem(
+                                        text = { Text(descriptor.title, maxLines = 1) },
+                                        leadingIcon = {
+                                            Icon(
+                                                descriptor.icon,
+                                                contentDescription = null,
+                                                tint = Color(descriptor.accentHex),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            IconButton(onClick = { onCloseRunningApp(appId) }) {
+                                                Icon(
+                                                    Icons.Filled.Close,
+                                                    contentDescription = "Close ${descriptor.title}",
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            switcherExpanded = false
+                                            onSelectApp(appId)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 items(runningApps, key = { "run_${it.name}" }) { appId ->
                     val descriptor = CamelAppRegistry.get(appId)
                     val isCurrent = activeApp == appId && !isDrawerOpen && !isSettingsOpen

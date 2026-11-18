@@ -1,6 +1,8 @@
 package com.example
 
 import android.media.MediaPlayer
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,11 +20,17 @@ import com.example.camel.core.CamelOsViewModel
 import com.example.camel.ui.CamelBootSplash
 import com.example.camel.ui.CamelOsShell
 import com.example.camel.ui.CamelPermissionWelcomeScreen
+import com.example.camel.ui.CamelWebViewPool
 import com.example.viewmodel.EuropassViewModel
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private var bootPlayer: MediaPlayer? = null
+
+    companion object {
+        @Volatile
+        private var trimCallbacksRegistered = false
+    }
 
     private fun enterImmersiveMode() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -36,6 +44,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enterImmersiveMode()
+
+        if (!trimCallbacksRegistered) {
+            synchronized(this) {
+                if (!trimCallbacksRegistered) {
+                    application.registerComponentCallbacks(object : ComponentCallbacks2 {
+                        override fun onConfigurationChanged(newConfig: Configuration) {}
+                        override fun onLowMemory() = CamelWebViewPool.onTrimMemory(
+                            ComponentCallbacks2.TRIM_MEMORY_COMPLETE
+                        )
+                        override fun onTrimMemory(level: Int) = CamelWebViewPool.onTrimMemory(level)
+                    })
+                    trimCallbacksRegistered = true
+                }
+            }
+        }
 
         // Configure Firebase App Check before any Compose UI, ViewModel, or Firebase operations.
         configureAppCheck(this, intent)

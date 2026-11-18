@@ -51,3 +51,6 @@ secrets/
 *.before-*
 *.bak
 *.old
+
+# Local timestamped source backups (not published)
+.camel-backups/
