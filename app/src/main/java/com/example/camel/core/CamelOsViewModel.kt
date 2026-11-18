@@ -234,6 +234,34 @@ class CamelOsViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { prefsStore.setShowClock(enabled) }
     }
 
+    fun setPanelHeightDp(heightDp: Float) {
+        viewModelScope.launch { prefsStore.setPanelHeightDp(heightDp) }
+    }
+
+    fun setPanelWidthMode(mode: CamelPanelWidth) {
+        viewModelScope.launch { prefsStore.setPanelWidthMode(mode) }
+    }
+
+    fun setPanelColourMode(mode: CamelPanelColour) {
+        viewModelScope.launch { prefsStore.setPanelColourMode(mode) }
+    }
+
+    fun setPanelCustomColourHex(hex: Long) {
+        viewModelScope.launch { prefsStore.setPanelCustomColourHex(hex) }
+    }
+
+    fun setPanelAlpha(alpha: Float) {
+        viewModelScope.launch { prefsStore.setPanelAlpha(alpha) }
+    }
+
+    fun setPanelCornerRadiusDp(radiusDp: Float) {
+        viewModelScope.launch { prefsStore.setPanelCornerRadiusDp(radiusDp) }
+    }
+
+    fun resetPanelSettings() {
+        viewModelScope.launch { prefsStore.resetPanelSettings() }
+    }
+
     fun toggleDesktopShortcut(appId: CamelAppId) {
         viewModelScope.launch {
             val wasPinned = appId.routeKey in preferences.value.pinnedDesktopApps

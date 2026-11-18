@@ -43,6 +43,8 @@ import com.example.camel.core.webFolder
 import com.example.camel.core.CamelNotificationSeverity
 import com.example.camel.core.CamelOsPreferences
 import com.example.camel.core.CamelOsViewModel
+import com.example.camel.core.CamelPanelColour
+import com.example.camel.core.CamelPanelWidth
 import com.example.camel.services.CamelSystemTelemetry
 import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.viewmodel.EuropassViewModel
@@ -87,6 +89,11 @@ fun CamelOsShell(
     var showExitConfirmation by remember { mutableStateOf(false) }
     var showDesktopContextMenu by remember { mutableStateOf(false) }
     var iconPickerTarget by remember { mutableStateOf<CamelAppId?>(null) }
+    // Desktop long-press -> Personalize opens Settings straight at the Panel section.
+    var settingsStartAtPanel by remember { mutableStateOf(false) }
+    LaunchedEffect(isSettingsOpen) {
+        if (!isSettingsOpen) settingsStartAtPanel = false
+    }
     val activity = LocalContext.current as? Activity
 
     val iconPickerLauncher = rememberLauncherForActivityResult(
@@ -136,6 +143,12 @@ fun CamelOsShell(
                     runningApps = runningApps,
                     pinnedPanelApps = prefs.pinnedPanelApps,
                     customAppIcons = prefs.customAppIcons,
+                    panelHeightDp = prefs.panelHeightDp,
+                    panelWidthMode = prefs.panelWidthMode,
+                    panelColourMode = prefs.panelColourMode,
+                    panelCustomColourHex = prefs.panelCustomColourHex,
+                    panelAlpha = prefs.panelAlpha,
+                    panelCornerRadiusDp = prefs.panelCornerRadiusDp,
                     telemetry = telemetry,
                     unreadNotifications = unreadCount,
                     onToggleDrawer = { osViewModel.toggleDrawer() },
@@ -193,7 +206,15 @@ fun CamelOsShell(
                                 onResetCustomAppIcon = osViewModel::resetCustomAppIcon,
                                 onPickCustomAppIconUri = osViewModel::setCustomAppIconFromUri,
                                 onOpenApp = { osViewModel.openApp(it) },
-                                onCloseSettings = { osViewModel.openSettings(false) }
+                                onCloseSettings = { osViewModel.openSettings(false) },
+                                startAtPanel = settingsStartAtPanel,
+                                onSetPanelHeightDp = osViewModel::setPanelHeightDp,
+                                onSetPanelWidthMode = osViewModel::setPanelWidthMode,
+                                onSetPanelColourMode = osViewModel::setPanelColourMode,
+                                onSetPanelCustomColourHex = osViewModel::setPanelCustomColourHex,
+                                onSetPanelAlpha = osViewModel::setPanelAlpha,
+                                onSetPanelCornerRadiusDp = osViewModel::setPanelCornerRadiusDp,
+                                onResetPanelSettings = osViewModel::resetPanelSettings
                             )
                         }
                     }
@@ -226,6 +247,7 @@ fun CamelOsShell(
                     },
                     onPersonalize = {
                         showDesktopContextMenu = false
+                        settingsStartAtPanel = true
                         osViewModel.openSettings(true)
                     },
                     onQuickSettings = {
@@ -379,7 +401,13 @@ private fun CamelTopPlasmaPanel(
     onSelectApp: (CamelAppId) -> Unit,
     onCloseRunningApp: (CamelAppId) -> Unit,
     onOpenControlCenter: () -> Unit,
-    customAppIcons: Map<String, String> = emptyMap()
+    customAppIcons: Map<String, String> = emptyMap(),
+    panelHeightDp: Float = 60f,
+    panelWidthMode: CamelPanelWidth = CamelPanelWidth.FULL,
+    panelColourMode: CamelPanelColour = CamelPanelColour.THEME_SURFACE,
+    panelCustomColourHex: Long = 0xFFD4AF37,
+    panelAlpha: Float = 0.96f,
+    panelCornerRadiusDp: Float = 0f
 ) {
     var clockMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var switcherExpanded by remember { mutableStateOf(false) }
@@ -399,16 +427,30 @@ private fun CamelTopPlasmaPanel(
         }
     }
 
+    // Panel height is the 48 dp button row plus vertical padding, so the
+    // 48–72 dp height setting is realised as 0–12 dp of vertical padding.
+    // At the 60 dp default that is exactly today's 6 dp.
+    val verticalPadding = ((panelHeightDp - 48f) / 2f).coerceIn(0f, 12f).dp
+    val floating = panelWidthMode == CamelPanelWidth.FLOATING
+    val cornerRadius = effectivePanelCornerRadiusDp(panelWidthMode, panelCornerRadiusDp).dp
+    val panelColour = resolvePanelColour(panelColourMode, panelCustomColourHex)
+
     Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        color = panelColour.copy(alpha = panelAlpha),
         tonalElevation = 10.dp,
+        shape = RoundedCornerShape(cornerRadius),
+        // Contrast guard (plan §5): the 1 dp outline stays at all opacities.
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
-        modifier = Modifier.fillMaxWidth()
+        modifier = if (floating) {
+            Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp)
+        } else {
+            Modifier.fillMaxWidth()
+        }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = verticalPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {

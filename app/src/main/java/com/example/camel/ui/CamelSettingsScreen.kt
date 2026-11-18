@@ -56,10 +56,22 @@ fun CamelSettingsScreen(
     onSetCustomAppIcon: (CamelAppId, String) -> Unit = { _, _ -> },
     onResetCustomAppIcon: (CamelAppId) -> Unit = {},
     onPickCustomAppIconUri: (CamelAppId, Uri) -> Unit = { _, _ -> },
+    startAtPanel: Boolean = false,
+    onSetPanelHeightDp: (Float) -> Unit = {},
+    onSetPanelWidthMode: (CamelPanelWidth) -> Unit = {},
+    onSetPanelColourMode: (CamelPanelColour) -> Unit = {},
+    onSetPanelCustomColourHex: (Long) -> Unit = {},
+    onSetPanelAlpha: (Float) -> Unit = {},
+    onSetPanelCornerRadiusDp: (Float) -> Unit = {},
+    onResetPanelSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var activeTab by remember { mutableStateOf(CamelSettingsTab.APPEARANCE) }
+    var activeTab by remember {
+        mutableStateOf(
+            if (startAtPanel) CamelSettingsTab.DESKTOP_PANEL else CamelSettingsTab.APPEARANCE
+        )
+    }
     var appFilterQuery by remember { mutableStateOf("") }
     var iconPickerTarget by remember { mutableStateOf<CamelAppId?>(null) }
 
@@ -348,6 +360,199 @@ fun CamelSettingsScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         item {
+                            SettingsSectionCard(title = "Top Panel") {
+                                // Live preview — same style math as the real panel.
+                                val previewColour = resolvePanelColour(
+                                    preferences.panelColourMode,
+                                    preferences.panelCustomColourHex
+                                )
+                                val previewRadius = effectivePanelCornerRadiusDp(
+                                    preferences.panelWidthMode,
+                                    preferences.panelCornerRadiusDp
+                                )
+                                Surface(
+                                    color = previewColour.copy(alpha = preferences.panelAlpha),
+                                    shape = RoundedCornerShape(previewRadius.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp)
+                                        .testTag("panel_preview")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(MaterialTheme.colorScheme.primary)
+                                        )
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(
+                                                text = "Calculator",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        Text(
+                                            text = "12:00",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Panel height (${preferences.panelHeightDp.toInt()} dp)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Slider(
+                                    value = preferences.panelHeightDp,
+                                    onValueChange = onSetPanelHeightDp,
+                                    valueRange = 48f..72f,
+                                    steps = 23,
+                                    modifier = Modifier.testTag("panel_height_slider")
+                                )
+                                Text(
+                                    text = "Panel width",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilterChip(
+                                        selected = preferences.panelWidthMode == CamelPanelWidth.FULL,
+                                        onClick = { onSetPanelWidthMode(CamelPanelWidth.FULL) },
+                                        label = { Text("Full width") },
+                                        modifier = Modifier.testTag("panel_width_full")
+                                    )
+                                    FilterChip(
+                                        selected = preferences.panelWidthMode == CamelPanelWidth.FLOATING,
+                                        onClick = { onSetPanelWidthMode(CamelPanelWidth.FLOATING) },
+                                        label = { Text("Floating") },
+                                        modifier = Modifier.testTag("panel_width_floating")
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Panel colour",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilterChip(
+                                        selected = preferences.panelColourMode == CamelPanelColour.THEME_SURFACE,
+                                        onClick = { onSetPanelColourMode(CamelPanelColour.THEME_SURFACE) },
+                                        label = { Text("Theme surface") },
+                                        modifier = Modifier.testTag("panel_colour_theme_surface")
+                                    )
+                                    FilterChip(
+                                        selected = preferences.panelColourMode == CamelPanelColour.ACCENT,
+                                        onClick = { onSetPanelColourMode(CamelPanelColour.ACCENT) },
+                                        label = { Text("Accent") },
+                                        modifier = Modifier.testTag("panel_colour_accent")
+                                    )
+                                    FilterChip(
+                                        selected = preferences.panelColourMode == CamelPanelColour.CUSTOM,
+                                        onClick = { onSetPanelColourMode(CamelPanelColour.CUSTOM) },
+                                        label = { Text("Custom") },
+                                        modifier = Modifier.testTag("panel_colour_custom")
+                                    )
+                                }
+                                if (preferences.panelColourMode == CamelPanelColour.CUSTOM) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        items(panelCustomColours) { (name, hex) ->
+                                            val isSelected = preferences.panelCustomColourHex == hex
+                                            Surface(
+                                                onClick = {
+                                                    onSetPanelCustomColourHex(hex)
+                                                    onSetPanelColourMode(CamelPanelColour.CUSTOM)
+                                                },
+                                                color = Color(hex),
+                                                shape = CircleShape,
+                                                border = BorderStroke(
+                                                    width = if (isSelected) 2.dp else 1.dp,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                                ),
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .testTag("panel_custom_colour_$name")
+                                            ) {
+                                                if (isSelected) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            Icons.Filled.Check,
+                                                            contentDescription = "Selected",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Panel opacity (${(preferences.panelAlpha * 100).toInt()}%)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Slider(
+                                    value = preferences.panelAlpha,
+                                    onValueChange = onSetPanelAlpha,
+                                    valueRange = 0.5f..1f,
+                                    steps = 49,
+                                    modifier = Modifier.testTag("panel_opacity_slider")
+                                )
+                                Text(
+                                    text = "Corner radius (${previewRadius.toInt()} dp)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Slider(
+                                    value = preferences.panelCornerRadiusDp,
+                                    onValueChange = onSetPanelCornerRadiusDp,
+                                    valueRange = 0f..24f,
+                                    steps = 23,
+                                    modifier = Modifier.testTag("panel_radius_slider")
+                                )
+                                if (preferences.panelWidthMode == CamelPanelWidth.FLOATING &&
+                                    preferences.panelCornerRadiusDp <= 0f
+                                ) {
+                                    Text(
+                                        text = "Floating panels use 12 dp corners when the radius is 0.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                }
+                                OutlinedButton(
+                                    onClick = onResetPanelSettings,
+                                    enabled = isPanelCustomised(preferences),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp)
+                                        .testTag("reset_panel_button")
+                                ) {
+                                    Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Reset panel to defaults")
+                                }
+                            }
+                        }
+
+                        item {
                             SettingsSectionCard(title = "Clean KDE Desktop Widgets") {
                                 SettingsSwitchRow(
                                     title = "Show Desktop Clock & Date",
@@ -606,3 +811,15 @@ private fun SettingsSwitchRow(
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
+
+/** Curated custom panel colours (name -> ARGB hex). */
+private val panelCustomColours: List<Pair<String, Long>> = listOf(
+    "gold" to 0xFFD4AF37,
+    "navy" to 0xFF0E2252,
+    "emerald" to 0xFF10B981,
+    "amethyst" to 0xFFC084FC,
+    "crimson" to 0xFFDC2626,
+    "orange" to 0xFFF97316,
+    "teal" to 0xFF14B8A6,
+    "graphite" to 0xFF3A3F4A
+)
