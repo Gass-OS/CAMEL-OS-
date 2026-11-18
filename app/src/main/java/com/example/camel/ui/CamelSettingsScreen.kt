@@ -417,7 +417,7 @@ fun CamelSettingsScreen(
                                 Slider(
                                     value = preferences.panelHeightDp,
                                     onValueChange = onSetPanelHeightDp,
-                                    valueRange = 48f..72f,
+                                    valueRange = 60f..84f,
                                     steps = 23,
                                     modifier = Modifier.testTag("panel_height_slider")
                                 )
