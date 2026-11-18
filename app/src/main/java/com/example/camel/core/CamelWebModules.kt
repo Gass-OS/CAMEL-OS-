@@ -21,3 +21,6 @@ fun CamelAppId.webFolder(): String? = when (this) {
     CamelAppId.WINDOWS_LOADER -> "windows-loader"
     else -> null
 }
+
+fun folderToAppId(folder: String): CamelAppId? =
+    CamelAppId.entries.firstOrNull { it.webFolder() == folder }

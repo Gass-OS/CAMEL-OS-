@@ -36,6 +36,7 @@ import com.example.apps.europass.EuropassModuleScreen
 import com.example.camel.core.CamelAppId
 import com.example.camel.core.CamelAppRegistry
 import com.example.camel.core.webFolder
+import com.example.camel.core.folderToAppId
 import com.example.camel.core.CamelNotificationSeverity
 import com.example.camel.core.CamelOsPreferences
 import com.example.camel.core.CamelOsViewModel
@@ -111,6 +112,7 @@ fun CamelOsShell(
             contentColor = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.fillMaxSize()
         ) {
+            Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Top KDE Plasma-Style Panel (Launcher, Tools, Pinned/Running Apps, System Tray)
                 CamelTopPlasmaPanel(
@@ -249,6 +251,13 @@ fun CamelOsShell(
                         TextButton(onClick = { showExitConfirmation = false }) { Text("Cancel") }
                     }
                 )
+            }
+
+            CamelDynamicIsland(
+                onOpenApp = { folder ->
+                    folderToAppId(folder)?.let { osViewModel.openApp(it) }
+                }
+            )
             }
         }
     }

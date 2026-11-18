@@ -185,6 +185,9 @@ class CamelWebViewController(
     var permissionLauncher: ActivityResultLauncher<Array<String>>? = null
     var fileLauncher: ActivityResultLauncher<Intent>? = null
     var onBack: () -> Unit = {}
+    private var nativeBridge: CamelNativeBridge? = null
+
+    val origin: String get() = "https://$host"
 
     fun attach(activity: Context) {
         attached = true
@@ -197,6 +200,9 @@ class CamelWebViewController(
         if (::view.isInitialized) {
             if (!playingAudio && folder != "recorder") view.onPause()
             context.setBaseContext(appContext)
+            if (!playingAudio && CamelMediaBus.info.value?.folder == folder) {
+                CamelMediaBus.publish(null)
+            }
             if (folder == "camera") CamelWebViewPool.discard(folder)
         } else {
             context.setBaseContext(appContext)
@@ -425,11 +431,52 @@ class CamelWebViewController(
             }
             loadUrl("https://$host/index.html")
         }
+        installNativeBridge()
         return view
+    }
+
+    private fun installNativeBridge() {
+        val bridge = CamelNativeBridge(view, folder, origin)
+        bridge.registerModule("media") { method, params ->
+            when (method) {
+                "state" -> {
+                    val playing = params.optBoolean("playing", false)
+                    playingAudio = playing
+                    CamelMediaBus.publish(
+                        CamelMediaInfo(
+                            folder = folder,
+                            origin = origin,
+                            playing = playing,
+                            title = params.optString("title", ""),
+                            artist = params.optString("artist", ""),
+                            position = params.optDouble("position", 0.0),
+                            duration = params.optDouble("duration", 0.0)
+                        )
+                    )
+                    null
+                }
+
+                else -> null
+            }
+        }
+        if (bridge.install()) nativeBridge = bridge
+    }
+
+    fun controlMedia(action: String, value: Any? = null) {
+        val js = when (action) {
+            "toggle" -> "window.__camelMediaControl && window.__camelMediaControl('toggle');"
+            "mute" -> "window.__camelMediaControl && window.__camelMediaControl('mute',$value);"
+            "seek" -> "window.__camelMediaControl && window.__camelMediaControl('seek',$value);"
+            else -> return
+        }
+        view.evaluateJavascript(js, null)
     }
 
     fun destroy() {
         cancelPending()
+        nativeBridge?.close()
+        nativeBridge = null
+        if (CamelMediaBus.info.value?.folder == folder) CamelMediaBus.publish(null)
         view.stopLoading()
         view.destroy()
     }
@@ -475,9 +522,14 @@ object CamelWebViewPool {
             controller.view.post { controller.destroy() }
         }
     }
+
+    @Synchronized
+    fun controllerFor(folder: String): CamelWebViewController? = entries[folder]?.controller
 }
 
 fun releaseCamelWebView(folder: String) = CamelWebViewPool.discard(folder)
+fun controlCamelMedia(folder: String, action: String, value: Any? = null) =
+    CamelWebViewPool.controllerFor(folder)?.controlMedia(action, value)
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
