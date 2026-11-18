@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#090b10">
 <title>Maps Gold — OpenStreetMap</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
 <style>
 :root{color-scheme:dark;--bg:#090b10;--panel:#111722;--gold:#e8bd63;--muted:#9aa6b8;--line:#293343}
 *{box-sizing:border-box}
@@ -66,21 +66,32 @@ button.active{border-color:var(--gold);color:var(--gold)}
  <button id="clear">Clear route</button>
 </div>
 </div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/vendor/leaflet/leaflet.js"></script>
 <script>
 (()=>{
 "use strict";
 const $=id=>document.getElementById(id);
 const text={
-en:{search:"Search",placeholder:"Search a place, city or address…",locate:"◎ My location",route:"➤ Route here",save:"☆ Save pin",offline:"◉ Offline compass",clear:"Clear route",ready:"OpenStreetMap ready",locating:"Finding your location…",denied:"Location unavailable. Check Camel OS permissions.",noresult:"No places found.",saved:"Pin saved on this device.",choose:"Search for and select a destination first.",routing:"Calculating driving route…",routeError:"Route service unavailable. Try again later.",offlineInfo:"Offline compass: GPS and straight-line distance work without map tiles. Previously cached tiles may remain available."},
-fr:{search:"Chercher",placeholder:"Rechercher un lieu, une ville ou une adresse…",locate:"◎ Ma position",route:"➤ Itinéraire",save:"☆ Enregistrer",offline:"◉ Boussole hors ligne",clear:"Effacer trajet",ready:"OpenStreetMap prêt",locating:"Recherche de votre position…",denied:"Position indisponible. Vérifiez les autorisations Camel OS.",noresult:"Aucun lieu trouvé.",saved:"Position enregistrée sur cet appareil.",choose:"Recherchez et sélectionnez une destination.",routing:"Calcul de l’itinéraire…",routeError:"Service d’itinéraire indisponible. Réessayez.",offlineInfo:"Boussole hors ligne : GPS et distance directe fonctionnent sans tuiles cartographiques."},
-ar:{search:"بحث",placeholder:"ابحث عن مكان أو مدينة أو عنوان…",locate:"◎ موقعي",route:"➤ الاتجاهات",save:"☆ حفظ الموقع",offline:"◉ بوصلة دون إنترنت",clear:"مسح المسار",ready:"الخريطة جاهزة",locating:"جارٍ تحديد موقعك…",denied:"الموقع غير متاح. تحقق من أذونات Camel OS.",noresult:"لم يتم العثور على أماكن.",saved:"تم حفظ الموقع على هذا الجهاز.",choose:"ابحث عن وجهة وحددها أولاً.",routing:"جارٍ حساب مسار القيادة…",routeError:"خدمة المسارات غير متاحة حالياً.",offlineInfo:"البوصلة تعمل دون إنترنت باستخدام GPS والمسافة المباشرة."}
+en:{search:"Search",placeholder:"Search a place, city or address…",locate:"◎ My location",route:"➤ Route here",save:"☆ Save pin",offline:"◉ Offline compass",clear:"Clear route",ready:"OpenStreetMap ready",locating:"Finding your location…",denied:"Location unavailable. Check Camel OS permissions.",noresult:"No places found.",saved:"Pin saved on this device.",choose:"Search for and select a destination first.",routing:"Calculating driving route…",routeError:"Route service unavailable. Try again later.",offlineInfo:"Offline compass: GPS and straight-line distance work without map tiles. Map tiles, search and routing are unavailable offline."},
+fr:{search:"Chercher",placeholder:"Rechercher un lieu, une ville ou une adresse…",locate:"◎ Ma position",route:"➤ Itinéraire",save:"☆ Enregistrer",offline:"◉ Boussole hors ligne",clear:"Effacer trajet",ready:"OpenStreetMap prêt",locating:"Recherche de votre position…",denied:"Position indisponible. Vérifiez les autorisations Camel OS.",noresult:"Aucun lieu trouvé.",saved:"Position enregistrée sur cet appareil.",choose:"Recherchez et sélectionnez une destination.",routing:"Calcul de l’itinéraire…",routeError:"Service d’itinéraire indisponible. Réessayez.",offlineInfo:"Boussole hors ligne : GPS et distance directe fonctionnent sans connexion ; tuiles, recherche et itinéraires indisponibles hors ligne."},
+ar:{search:"بحث",placeholder:"ابحث عن مكان أو مدينة أو عنوان…",locate:"◎ موقعي",route:"➤ الاتجاهات",save:"☆ حفظ الموقع",offline:"◉ بوصلة دون إنترنت",clear:"مسح المسار",ready:"الخريطة جاهزة",locating:"جارٍ تحديد موقعك…",denied:"الموقع غير متاح. تحقق من أذونات Camel OS.",noresult:"لم يتم العثور على أماكن.",saved:"تم حفظ الموقع على هذا الجهاز.",choose:"ابحث عن وجهة وحددها أولاً.",routing:"جارٍ حساب مسار القيادة…",routeError:"خدمة المسارات غير متاحة حالياً.",offlineInfo:"البوصلة تعمل دون إنترنت باستخدام GPS والمسافة المباشرة. Tuiles والبحث والمسارات غير متاحة دون اتصال."}
 };
 let lang="en",selected=null,userPosition=null,routeLayer=null,searchMarker=null;
 const map=L.map("map",{zoomControl:true}).setView([35.1676,8.8365],13);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+let tilesLoaded=0,tileErrors=0;
+const tiles=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
  maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-}).addTo(map);
+});
+tiles.on("tileload",()=>{tilesLoaded++;updateMapStatus()});
+tiles.on("tileerror",()=>{tileErrors++;updateMapStatus()});
+tiles.addTo(map);
+function updateMapStatus(){
+ if(!navigator.onLine){$("status").textContent="Offline — map tiles and search need a connection. GPS compass still works.";return}
+ if(tilesLoaded>0){say("ready");return}
+ if(tileErrors>3){$("status").textContent="Map tiles could not be loaded. Check your connection; GPS compass still works.";return}
+ $("status").textContent="Loading OpenStreetMap tiles…";
+}
+updateMapStatus();
 let userMarker=null;
 const pins=JSON.parse(localStorage.getItem("camelMapPins")||"[]");
 function say(key){$("status").textContent=text[lang][key]||key}
@@ -99,7 +110,7 @@ function setLanguage(){
  document.documentElement.dir=lang==="ar"?"rtl":"ltr";
 }
 $("lang").onclick=()=>{lang=lang==="en"?"fr":lang==="fr"?"ar":"en";setLanguage()};
-setLanguage();updateSaved();say("ready");
+setLanguage();updateSaved();updateMapStatus();
 
 function choosePlace(p){
  selected={lat:p.lat,lon:p.lon,name:p.name||"Selected place"};
@@ -217,8 +228,8 @@ map.on("click",e=>{selected={lat:e.latlng.lat,lon:e.latlng.lng,name:"Dropped pin
  if(searchMarker)map.removeLayer(searchMarker);
  searchMarker=L.marker(e.latlng).addTo(map).bindPopup("Dropped pin").openPopup();
 });
-window.addEventListener("online",()=>say("ready"));
-window.addEventListener("offline",()=>{$("status").textContent="Offline — GPS compass and saved pins remain available"});
+window.addEventListener("online",()=>{tilesLoaded=0;tileErrors=0;updateMapStatus()});
+window.addEventListener("offline",updateMapStatus);
 })();
 </script>
 </body>
