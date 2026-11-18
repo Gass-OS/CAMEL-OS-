@@ -1,503 +1,539 @@
 package com.example.camel.ui
 
-import android.content.Intent
 import android.Manifest
-import android.content.pm.PackageManager
+import android.app.Application
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.ComponentCallbacks2
+import android.content.Intent
+import android.content.MutableContextWrapper
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.util.Log
-import android.webkit.*
+import org.json.JSONObject
+import android.webkit.ConsoleMessage
+import android.webkit.GeolocationPermissions
+import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
 
+private const val TAG = "CamelWebView"
+
+private data class WebPermissionJob(
+    val origin: String,
+    val request: PermissionRequest? = null,
+    val geoCallback: GeolocationPermissions.Callback? = null
+)
+
+private data class FileChooserJob(
+    val callback: ValueCallback<Array<Uri>>,
+    val allowMultiple: Boolean
+)
+
+private fun Context.hasPermission(permission: String): Boolean =
+    checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+
+private fun PermissionRequest.supportedResources(): Array<String> =
+    resources.filter {
+        it == PermissionRequest.RESOURCE_VIDEO_CAPTURE ||
+            it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
+    }.toTypedArray()
+
+private fun permissionForResource(resource: String): String? = when (resource) {
+    PermissionRequest.RESOURCE_VIDEO_CAPTURE -> Manifest.permission.CAMERA
+    PermissionRequest.RESOURCE_AUDIO_CAPTURE -> Manifest.permission.RECORD_AUDIO
+    else -> null
+}
+
+private val VIEWPORT_REPAIR_JS = """
+(function() {
+  function apply() {
+    var h = Math.max(1, window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    var w = Math.max(1, window.visualViewport ? window.visualViewport.width : window.innerWidth);
+    var height = h + 'px', width = w + 'px';
+    var html = document.documentElement, body = document.body, root = document.getElementById('root');
+    html.style.setProperty('height', height, 'important');
+    html.style.setProperty('min-height', height, 'important');
+    body.style.setProperty('position', 'fixed', 'important');
+    body.style.setProperty('top', '0px', 'important');
+    body.style.setProperty('left', '0px', 'important');
+    body.style.setProperty('width', width, 'important');
+    body.style.setProperty('height', height, 'important');
+    body.style.setProperty('margin', '0', 'important');
+    if (root) {
+      root.style.setProperty('position', 'fixed', 'important');
+      root.style.setProperty('top', '0px', 'important');
+      root.style.setProperty('left', '0px', 'important');
+      root.style.setProperty('width', width, 'important');
+      root.style.setProperty('height', height, 'important');
+      root.style.setProperty('min-height', height, 'important');
+      root.style.setProperty('overflow', 'auto', 'important');
+      var app = root.firstElementChild;
+      if (app) {
+        app.style.setProperty('height', height, 'important');
+        app.style.setProperty('min-height', height, 'important');
+        app.style.setProperty('width', '100%', 'important');
+      }
+    }
+  }
+  window.__camelViewportResize = apply;
+  window.addEventListener('resize', apply);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', apply);
+  apply();
+})();
+""".trimIndent()
+
+private fun applyViewportRepair(view: WebView) {
+    view.evaluateJavascript(VIEWPORT_REPAIR_JS, null)
+}
+
+private val AUDIO_STATE_JS = """
+(function() {
+  if (window.__camelAudioHooked) return;
+  window.__camelAudioHooked = true;
+  function report() {
+    var playing = false;
+    document.querySelectorAll('audio,video').forEach(function(el) {
+      if (!el.paused && !el.ended && el.currentTime > 0) playing = true;
+    });
+    if (window.CamelAudioState) window.CamelAudioState.setPlaying(playing);
+  }
+  document.addEventListener('play', report, true);
+  document.addEventListener('pause', report, true);
+  document.addEventListener('ended', report, true);
+})();
+""".trimIndent()
+
+internal fun parseChooserUris(data: Intent?, allowMultiple: Boolean): Array<Uri> {
+    if (data == null) return emptyArray()
+    val uris = mutableListOf<Uri>()
+    data.clipData?.let { clip ->
+        for (i in 0 until clip.itemCount) {
+            clip.getItemAt(i).uri?.let(uris::add)
+        }
+    }
+    data.data?.let(uris::add)
+    val distinct = uris.distinct()
+    return (if (allowMultiple) distinct else distinct.take(1)).toTypedArray()
+}
+
+internal fun Intent.toFileChooserIntent(acceptTypes: Array<String>, allowMultiple: Boolean): Intent {
+    val mimeTypes = acceptTypes
+        .asSequence()
+        .flatMap { it.split(",").asSequence() }
+        .map { it.trim().lowercase() }
+        .filter { it.contains("/") }
+        .distinct()
+        .toList()
+    val hasExplicitExtensions = acceptTypes.any { it.trim().startsWith(".") }
+
+    type = when {
+        mimeTypes.size == 1 -> mimeTypes.first()
+        mimeTypes.isNotEmpty() -> "application/octet-stream"
+        hasExplicitExtensions -> "application/octet-stream"
+        else -> "*/*"
+    }
+    if (mimeTypes.size > 1) {
+        putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
+    }
+    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
+    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+    return this
+}
+
+class CamelWebViewController(
+    private val appContext: Context,
+    private val host: String,
+    private val loader: WebViewAssetLoader
+) {
+    private val context = MutableContextWrapper(appContext)
+    private var activePermission: WebPermissionJob? = null
+    private var activeFileChooser: FileChooserJob? = null
+
+    @Volatile
+    var playingAudio: Boolean = false
+        private set
+
+    var attached: Boolean = false
+        private set
+
+    lateinit var view: WebView
+        private set
+
+    var permissionLauncher: ActivityResultLauncher<Array<String>>? = null
+    var fileLauncher: ActivityResultLauncher<Intent>? = null
+    var onBack: () -> Unit = {}
+
+    fun attach(activity: Context) {
+        attached = true
+        context.setBaseContext(activity)
+    }
+
+    fun detach() {
+        attached = false
+        context.setBaseContext(appContext)
+    }
+
+    private inner class CamelAudioState {
+        @JavascriptInterface
+        fun setPlaying(playing: Boolean) {
+            playingAudio = playing
+        }
+    }
+
+    fun onPermissionResult(results: Map<String, Boolean>) {
+        val job = activePermission ?: return
+        activePermission = null
+
+        if (job.request != null) {
+            val granted = job.request.supportedResources().filter { resource ->
+                val androidPermission = permissionForResource(resource)
+                androidPermission == null ||
+                    results[androidPermission] == true ||
+                    context.hasPermission(androidPermission)
+            }
+            if (granted.isNotEmpty()) {
+                job.request.grant(granted.toTypedArray())
+            } else {
+                job.request.deny()
+                notifyPermissionDenied(job.origin)
+            }
+        }
+        job.geoCallback?.let { callback ->
+            val allowed = context.hasPermission(Manifest.permission.ACCESS_FINE_LOCATION) ||
+                context.hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+            callback.invoke(job.origin, allowed, false)
+        }
+    }
+
+    fun onFileResult(resultCode: Int, data: Intent?) {
+        val chooser = activeFileChooser ?: return
+        activeFileChooser = null
+        val uris = parseChooserUris(data, chooser.allowMultiple)
+        if (uris.isEmpty()) {
+            Log.d(TAG, "FILE CHOOSER cancelled resultCode=$resultCode")
+        } else {
+            for (uri in uris) {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }.onFailure { Log.d(TAG, "URI permission not persistable: $uri") }
+            }
+        }
+        chooser.callback.onReceiveValue(uris)
+    }
+
+    fun cancelPending() {
+        activePermission?.let { job ->
+            job.request?.deny()
+            job.geoCallback?.invoke(job.origin, false, false)
+        }
+        activePermission = null
+        activeFileChooser?.callback?.onReceiveValue(null)
+        activeFileChooser = null
+    }
+
+    private fun notifyPermissionDenied(origin: String) {
+        view.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('camel-permission-denied'," +
+                "{detail:{origin:${JSONObject.quote(origin)}}}));",
+            null
+        )
+    }
+
+    fun create(): WebView {
+        view = WebView(context).apply {
+            addJavascriptInterface(CamelAudioState(), "CamelAudioState")
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                mediaPlaybackRequiresUserGesture = false
+                allowFileAccess = false
+                allowContentAccess = false
+                setGeolocationEnabled(true)
+                cacheMode = WebSettings.LOAD_DEFAULT
+            }
+            webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): WebResourceResponse? {
+                    if (request.url.path?.endsWith("registerSW.js") == true) {
+                        return WebResourceResponse(
+                            "application/javascript", "utf-8", "".byteInputStream()
+                        )
+                    }
+                    return loader.shouldInterceptRequest(request.url)
+                }
+
+                override fun onReceivedError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    error: WebResourceError
+                ) {
+                    Log.e(TAG, "LOAD ERROR ${request.url}: ${error.errorCode} ${error.description}")
+                }
+
+                override fun onReceivedHttpError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    response: WebResourceResponse
+                ) {
+                    Log.e(TAG, "HTTP ERROR ${response.statusCode} ${request.url}")
+                }
+
+                override fun onPageFinished(view: WebView, url: String) {
+                    Log.d(TAG, "PAGE FINISHED $url")
+                    applyViewportRepair(view)
+                    view.evaluateJavascript(AUDIO_STATE_JS, null)
+                }
+            }
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                    Log.d(TAG, "JS ${message.message()} at ${message.sourceId()}:${message.lineNumber()}")
+                    return true
+                }
+
+                override fun onPermissionRequest(request: PermissionRequest) {
+                    val origin = request.origin?.toString().orEmpty()
+                    if (Uri.parse(origin).host != host) {
+                        Log.w(TAG, "Rejected permission origin: $origin")
+                        request.deny()
+                        return
+                    }
+                    val supported = request.supportedResources()
+                    if (supported.isEmpty()) {
+                        request.deny()
+                        return
+                    }
+                    val missing = supported.mapNotNull(::permissionForResource)
+                        .distinct()
+                        .filterNot(context::hasPermission)
+
+                    if (missing.isEmpty()) {
+                        request.grant(supported)
+                        return
+                    }
+
+                    cancelPending()
+                    activePermission = WebPermissionJob(origin = origin, request = request)
+                    permissionLauncher?.launch(missing.toTypedArray()) ?: run {
+                        activePermission = null
+                        request.deny()
+                        Log.e(TAG, "Permission launcher not registered yet")
+                    }
+                }
+
+                override fun onGeolocationPermissionsShowPrompt(
+                    origin: String,
+                    callback: GeolocationPermissions.Callback
+                ) {
+                    if (Uri.parse(origin).host != host) {
+                        Log.w(TAG, "Rejected location origin: $origin")
+                        callback.invoke(origin, false, false)
+                        return
+                    }
+                    if (context.hasPermission(Manifest.permission.ACCESS_FINE_LOCATION) ||
+                        context.hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+                    ) {
+                        callback.invoke(origin, true, false)
+                        return
+                    }
+
+                    cancelPending()
+                    activePermission = WebPermissionJob(origin = origin, geoCallback = callback)
+                    permissionLauncher?.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
+                        ?: run {
+                            activePermission = null
+                            callback.invoke(origin, false, false)
+                            Log.e(TAG, "Permission launcher not registered yet")
+                        }
+                }
+
+                override fun onShowFileChooser(
+                    webView: WebView,
+                    filePathCallback: ValueCallback<Array<Uri>>,
+                    fileChooserParams: FileChooserParams
+                ): Boolean {
+                    activeFileChooser?.callback?.onReceiveValue(null)
+                    val allowMultiple = fileChooserParams.mode ==
+                        FileChooserParams.MODE_OPEN_MULTIPLE
+                    activeFileChooser = FileChooserJob(filePathCallback, allowMultiple)
+                    return try {
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).toFileChooserIntent(
+                            fileChooserParams.acceptTypes,
+                            allowMultiple
+                        )
+                        Log.d(
+                            TAG,
+                            "FILE PICKER types=${fileChooserParams.acceptTypes.toList()} " +
+                                "multiple=$allowMultiple"
+                        )
+                        fileLauncher?.launch(intent) ?: run {
+                            activeFileChooser = null
+                            filePathCallback.onReceiveValue(null)
+                            Log.e(TAG, "File launcher not registered yet")
+                        }
+                        true
+                    } catch (e: Exception) {
+                        Log.e(TAG, "FILE PICKER ERROR", e)
+                        activeFileChooser = null
+                        filePathCallback.onReceiveValue(null)
+                        true
+                    }
+                }
+            }
+            setOnKeyListener { _, keyCode, event ->
+                keyCode == android.view.KeyEvent.KEYCODE_BACK &&
+                    event.action == android.view.KeyEvent.ACTION_DOWN && canGoBack()
+            }
+            loadUrl("https://$host/index.html")
+        }
+        return view
+    }
+
+    fun destroy() {
+        cancelPending()
+        view.stopLoading()
+        view.destroy()
+    }
+}
+
+object CamelWebViewPool {
+    private data class Entry(val controller: CamelWebViewController, val host: String)
+
+    private val entries = mutableMapOf<String, Entry>()
+    private var trimLevel: Int = ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+
+    fun onTrimMemory(level: Int) {
+        trimLevel = level
+        if (level < ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) return
+        val victims = synchronized(this) {
+            entries.filter { (_, entry) ->
+                !entry.controller.attached && !entry.controller.playingAudio
+            }.map { it.key }
+        }
+        if (victims.isEmpty()) return
+        Log.w(TAG, "TRIM_MEMORY level=$level releasing idle WebViews: $victims")
+        victims.forEach(::discard)
+    }
+
+    @Synchronized
+    fun suspendIdle(folder: String) {
+        val controller = entries[folder]?.controller ?: return
+        if (controller.attached || controller.playingAudio) return
+        // Intentionally no pauseTimers/onPause: those silently stop audio playback.
+        // Idle WebViews are released only on explicit close or memory pressure.
+    }
+
+    @Synchronized
+    fun acquire(
+        folder: String,
+        host: String,
+        context: Context,
+        loader: WebViewAssetLoader
+    ): CamelWebViewController {
+        val existing = entries[folder]
+        if (existing != null && existing.host == host) return existing.controller
+        existing?.controller?.destroy()
+        val controller = CamelWebViewController(context, host, loader).also { it.create() }
+        entries[folder] = Entry(controller, host)
+        return controller
+    }
+
+    @Synchronized
+    fun discard(folder: String) {
+        entries.remove(folder)?.controller?.let { controller ->
+            controller.view.post { controller.destroy() }
+        }
+    }
+}
+
+fun releaseCamelWebView(folder: String) = CamelWebViewPool.discard(folder)
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun CamelWebApp(folder: String, onClose: () -> Unit) {
     val context = LocalContext.current
-    var web by remember { mutableStateOf<WebView?>(null) }
-    var pendingFile by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
-    var pendingWebPermission by remember { mutableStateOf<PermissionRequest?>(null) }
-    var pendingGeo by remember {
-        mutableStateOf<Pair<String, GeolocationPermissions.Callback>?>(null)
-    }
-
-    val permLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        pendingWebPermission?.let { request ->
-            val granted = request.resources.filter { resource ->
-                when (resource) {
-                    PermissionRequest.RESOURCE_VIDEO_CAPTURE ->
-                        results[Manifest.permission.CAMERA]
-                            ?: (context.checkSelfPermission(Manifest.permission.CAMERA) ==
-                                PackageManager.PERMISSION_GRANTED)
-                    PermissionRequest.RESOURCE_AUDIO_CAPTURE ->
-                        results[Manifest.permission.RECORD_AUDIO]
-                            ?: (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
-                                PackageManager.PERMISSION_GRANTED)
-                    else -> false
-                }
-            }
-            if (granted.isNotEmpty()) request.grant(granted.toTypedArray())
-            else request.deny()
-            pendingWebPermission = null
-        }
-
-        pendingGeo?.let { (origin, callback) ->
-            val fine = context.checkSelfPermission(
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-            val coarse = context.checkSelfPermission(
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-            callback.invoke(origin, fine || coarse, false)
-            pendingGeo = null
-        }
-    }
-    val fileLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { res ->
-        pendingFile?.onReceiveValue(
-            WebChromeClient.FileChooserParams.parseResult(res.resultCode, res.data)
-        )
-        pendingFile = null
-    }
-
-
+    val appContext = remember { context.applicationContext }
     val host = remember(folder) { "${folder.lowercase().replace("_", "-")}.camelos.local" }
     val loader = remember(folder) {
         val assets = WebViewAssetLoader.AssetsPathHandler(context)
         WebViewAssetLoader.Builder()
             .setDomain(host)
+            .addPathHandler("/vendor/") { path -> assets.handle("vendor/$path") }
             .addPathHandler("/") { path -> assets.handle("apps/$folder/$path") }
             .build()
     }
 
+    val controller = remember(folder, host) {
+        CamelWebViewPool.acquire(folder, host, appContext, loader)
+    }
+    if (context is android.app.Activity) controller.attach(context)
+    controller.onBack = onClose
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        controller.onPermissionResult(results)
+    }
+    val fileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        controller.onFileResult(result.resultCode, result.data)
+    }
+
+    DisposableEffect(controller) {
+        controller.permissionLauncher = permissionLauncher
+        controller.fileLauncher = fileLauncher
+        onDispose {
+            controller.detach()
+            if (controller.permissionLauncher === permissionLauncher) controller.permissionLauncher = null
+            if (controller.fileLauncher === fileLauncher) controller.fileLauncher = null
+        }
+    }
+
     BackHandler {
-        val w = web
-        if (w != null && w.canGoBack()) w.goBack() else onClose()
+        val w = controller.view
+        if (w.canGoBack()) w.goBack() else onClose()
     }
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
-        factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.mediaPlaybackRequiresUserGesture = false
-                settings.allowFileAccess = false
-                settings.setGeolocationEnabled(true)
-
-                webViewClient = object : WebViewClient() {
-                    override fun shouldInterceptRequest(
-                        view: WebView, request: WebResourceRequest
-                    ): WebResourceResponse? {
-                        if (request.url.path?.endsWith("registerSW.js") == true)
-                            return WebResourceResponse("application/javascript", "utf-8", "".byteInputStream())
-                        val response = loader.shouldInterceptRequest(request.url)
-                        Log.d(
-                            "CamelWebView",
-                            "RESOURCE ${request.url} -> ${response?.mimeType ?: "NOT INTERCEPTED"}"
-                        )
-                        return response
-                    }
-
-                    override fun onReceivedError(
-                        view: WebView,
-                        request: WebResourceRequest,
-                        error: WebResourceError
-                    ) {
-                        Log.e(
-                            "CamelWebView",
-                            "LOAD ERROR ${request.url}: ${error.errorCode} ${error.description}"
-                        )
-                    }
-
-                    override fun onReceivedHttpError(
-                        view: WebView,
-                        request: WebResourceRequest,
-                        response: WebResourceResponse
-                    ) {
-                        Log.e(
-                            "CamelWebView",
-                            "HTTP ERROR ${response.statusCode} ${request.url}"
-                        )
-                    }
-
-                    override fun onPageFinished(view: WebView, url: String) {
-                        Log.d("CamelWebView", "PAGE FINISHED $url")
-
-                        view.evaluateJavascript(
-                            """(function() {
-                                const root = document.getElementById('root');
-                                return JSON.stringify({
-                                    url: location.href,
-                                    title: document.title,
-                                    ready: document.readyState,
-                                    rootExists: !!root,
-                                    rootLength: root ? root.innerHTML.length : -1,
-                                    rootText: root ? root.innerText.substring(0, 300) : '',
-                                    bodyLength: document.body.innerHTML.length,
-                                    bodyWidth: document.body.getBoundingClientRect().width,
-                                    bodyHeight: document.body.getBoundingClientRect().height,
-                                    rootDisplay: root ? getComputedStyle(root).display : '',
-                                    rootVisibility: root ? getComputedStyle(root).visibility : '',
-                                    bodyBackground: getComputedStyle(document.body).backgroundColor
-                                });
-                            })()""".trimIndent()
-                        ) { result ->
-                            Log.d("CamelWebView", "DOM INSPECTION: $result")
-                            view.evaluateJavascript(
-                                """
-                                (function() {
-                                  const root = document.getElementById("root");
-                                  const html = document.documentElement;
-                                  const body = document.body;
-                                  const r = root ? root.getBoundingClientRect() : null;
-                                  const first = root ? root.firstElementChild : null;
-                                  const f = first ? first.getBoundingClientRect() : null;
-                                  return JSON.stringify({
-                                    viewport: innerWidth + "x" + innerHeight,
-                                    screen: screen.width + "x" + screen.height,
-                                    html: { height: html.getBoundingClientRect().height, scrollHeight: html.scrollHeight, overflow: getComputedStyle(html).overflow },
-                                    body: { height: body.getBoundingClientRect().height, scrollHeight: body.scrollHeight, overflow: getComputedStyle(body).overflow },
-                                    root: r ? { width: r.width, height: r.height, top: r.top, left: r.left, overflow: getComputedStyle(root).overflow } : null,
-                                    firstChild: f ? { width: f.width, height: f.height, top: f.top, left: f.left, display: getComputedStyle(first).display } : null
-                                  });
-                                })()
-                                """.trimIndent()
-                            ) { result ->
-                                Log.d("CamelWebView", "LAYOUT INSPECTION: $result")
-                            }
-                                
-                                // CAMEL_VIEWPORT_REPAIR
-                                view.evaluateJavascript(
-                                    """
-                                    (function() {
-                                      let style = document.getElementById("camel-viewport-fix");
-                                      if (!style) {
-                                        style = document.createElement("style");
-                                        style.id = "camel-viewport-fix";
-                                        style.textContent = "html, body { height: 100% !important; min-height: 100% !important; } body { width: 100% !important; margin: 0 !important; } #root { width: 100% !important; height: 100% !important; min-height: 100vh !important; } #root > * { min-height: 100vh !important; }";
-                                        document.head.appendChild(style);
-                                      }
-                                      // CAMEL_FIXED_ROOT_REPAIR
-                                      const html = document.documentElement;
-                                      const body = document.body;
-                                      const root = document.getElementById("root");
-                                      html.style.setProperty("height", "100vh", "important");
-                                      html.style.setProperty("min-height", "100vh", "important");
-                                      body.style.setProperty("position", "fixed", "important");
-                                      body.style.setProperty("inset", "0", "important");
-                                      body.style.setProperty("width", "100vw", "important");
-                                      body.style.setProperty("height", "100vh", "important");
-                                      body.style.setProperty("margin", "0", "important");
-                                      if (root) {
-                                        root.style.setProperty("position", "fixed", "important");
-                                        root.style.setProperty("inset", "0", "important");
-                                        root.style.setProperty("width", "100vw", "important");
-                                        root.style.setProperty("height", "100vh", "important");
-                                        root.style.setProperty("min-height", "100vh", "important");
-                                        root.style.setProperty("overflow", "auto", "important");
-                                        if (root.firstElementChild) {
-                                          root.firstElementChild.style.setProperty("min-height", "100vh", "important");
-                                          root.firstElementChild.style.setProperty("height", "100vh", "important");
-                                        }
-                                      }
-                                      window.dispatchEvent(new Event("resize"));
-                                      return JSON.stringify({
-                                        htmlHeight: document.documentElement.getBoundingClientRect().height,
-                                        bodyHeight: document.body.getBoundingClientRect().height,
-                                        rootHeight: document.getElementById("root")?.getBoundingClientRect().height
-                                      });
-                                    })()
-                                    """.trimIndent()
-                                ) { result ->
-                                    Log.d("CamelWebView", "VIEWPORT FIX RESULT: $result")
-    view.evaluateJavascript(
-        """
-        (function() {
-          const root = document.getElementById("root");
-          const first = root?.firstElementChild;
-          const parent = root?.parentElement;
-          const info = el => {
-            if (!el) return null;
-            const c = getComputedStyle(el);
-            const r = el.getBoundingClientRect();
-            return {
-              tag: el.tagName,
-              id: el.id,
-              className: String(el.className || ""),
-              rect: {width:r.width,height:r.height,top:r.top,left:r.left},
-              offsetHeight:el.offsetHeight,
-              clientHeight:el.clientHeight,
-              display:c.display,
-              position:c.position,
-              height:c.height,
-              minHeight:c.minHeight,
-              flex:c.flex,
-              alignItems:c.alignItems,
-              cssText:el.style.cssText
-            };
-          };
-          return JSON.stringify({
-            html:info(document.documentElement),
-            body:info(document.body),
-            parent:info(parent),
-            root:info(root),
-            firstChild:info(first)
-          });
-        })()
-        """.trimIndent()
-    ) { details ->
-        Log.d("CamelWebView", "ROOT STYLE DETAILS: $details")
-
-    // CAMEL_CSS_FORENSICS
-    view.evaluateJavascript(
-        """
-        (function() {
-          const probe = document.createElement("div");
-          probe.id = "camel-viewport-probe";
-          probe.style.cssText = "position:fixed!important;top:0!important;left:0!important;width:20px!important;height:100vh!important;min-height:100vh!important;display:block!important;visibility:hidden!important;pointer-events:none!important;";
-          document.body.appendChild(probe);
-
-          const rules = [];
-          for (const sheet of document.styleSheets) {
-            try {
-              for (const rule of sheet.cssRules) {
-                if (/(#root|100dvh|100vh|html|body)/i.test(rule.cssText)) {
-                  rules.push(rule.cssText.substring(0, 500));
-                }
-              }
-            } catch (e) {
-              rules.push("UNREADABLE STYLESHEET: " + e.message);
-            }
-          }
-
-          const r = document.getElementById("root");
-          const m = document.querySelector("main");
-          const pr = probe.getBoundingClientRect();
-          return JSON.stringify({
-            innerHeight: innerHeight,
-            visualViewportHeight: visualViewport ? visualViewport.height : null,
-            vhProbe: {height:pr.height,top:pr.top},
-            rootHeight:r ? r.getBoundingClientRect().height : null,
-            mainHeight:m ? m.getBoundingClientRect().height : null,
-            rules:rules.slice(0,80)
-          });
-        })()
-        """.trimIndent()
-    ) { result ->
-        Log.d("CamelWebView", "CAMEL CSS FORENSICS: $result")
-    }
-        
-        // CAMEL_PIXEL_VIEWPORT_REPAIR
-        view.evaluateJavascript(
-            """
-            (function() {
-              function applyCamelViewport() {
-                const h = Math.max(1, window.visualViewport ? window.visualViewport.height : window.innerHeight);
-                const w = Math.max(1, window.visualViewport ? window.visualViewport.width : window.innerWidth);
-                const height = h + "px";
-                const width = w + "px";
-                const html = document.documentElement;
-                const body = document.body;
-                const root = document.getElementById("root");
-                html.style.setProperty("height", height, "important");
-                html.style.setProperty("min-height", height, "important");
-                body.style.setProperty("position", "fixed", "important");
-                body.style.setProperty("top", "0px", "important");
-                body.style.setProperty("left", "0px", "important");
-                body.style.setProperty("width", width, "important");
-                body.style.setProperty("height", height, "important");
-                if (root) {
-                  root.style.setProperty("position", "fixed", "important");
-                  root.style.setProperty("top", "0px", "important");
-                  root.style.setProperty("left", "0px", "important");
-                  root.style.setProperty("width", width, "important");
-                  root.style.setProperty("height", height, "important");
-                  root.style.setProperty("min-height", height, "important");
-                  root.style.setProperty("overflow", "auto", "important");
-                  const app = root.firstElementChild;
-                  if (app) {
-                    app.style.setProperty("height", height, "important");
-                    app.style.setProperty("min-height", height, "important");
-                    app.style.setProperty("width", "100%", "important");
-                  }
-                }
-                return JSON.stringify({viewportHeight:h, appliedHeight:height, html:html.getBoundingClientRect().height, body:body.getBoundingClientRect().height, root:root ? root.getBoundingClientRect().height : -1, app:root && root.firstElementChild ? root.firstElementChild.getBoundingClientRect().height : -1});
-              }
-              window.__camelViewportResize = applyCamelViewport;
-              window.addEventListener("resize", applyCamelViewport);
-              if (window.visualViewport) window.visualViewport.addEventListener("resize", applyCamelViewport);
-              return applyCamelViewport();
-            })()
-            """.trimIndent()
-        ) { result ->
-            Log.d("CamelWebView", "CAMEL PIXEL REPAIR: $result")
-        }
-
-    }
-
-                                }
-                        }
-                    }
-                }
-                webChromeClient = object : WebChromeClient() {
-                    override fun onConsoleMessage(message: ConsoleMessage): Boolean {
-                        Log.e(
-                            "CamelWebView",
-                            "JS ${message.message()} at ${message.sourceId()}:${message.lineNumber()}"
-                        )
-                        return true
-                    }
-                    override fun onPermissionRequest(request: PermissionRequest) {
-                        if (request.origin.host != host) {
-                            Log.w("CamelWebView", "Rejected permission origin: ${request.origin}")
-                            request.deny()
-                            return
-                        }
-                        val required = request.resources.mapNotNull { resource ->
-                            when (resource) {
-                                PermissionRequest.RESOURCE_VIDEO_CAPTURE ->
-                                    Manifest.permission.CAMERA
-                                PermissionRequest.RESOURCE_AUDIO_CAPTURE ->
-                                    Manifest.permission.RECORD_AUDIO
-                                else -> null
-                            }
-                        }.distinct()
-
-                        if (required.isEmpty()) {
-                            request.deny()
-                            return
-                        }
-
-                        val missing = required.filter {
-                            context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
-                        }
-
-                        if (missing.isEmpty()) {
-                            val granted = request.resources.filter {
-                                it == PermissionRequest.RESOURCE_VIDEO_CAPTURE ||
-                                    it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
-                            }
-                            request.grant(granted.toTypedArray())
-                            return
-                        }
-
-                        pendingGeo?.let { (origin, callback) ->
-                            callback.invoke(origin, false, false)
-                            pendingGeo = null
-                        }
-                        pendingWebPermission?.deny()
-                        pendingWebPermission = request
-                        permLauncher.launch(missing.toTypedArray())
-                    }
-
-                    override fun onGeolocationPermissionsShowPrompt(
-                        origin: String,
-                        callback: GeolocationPermissions.Callback
-                    ) {
-                        if (Uri.parse(origin).host != host) {
-                            Log.w("CamelWebView", "Rejected location origin: $origin")
-                            callback.invoke(origin, false, false)
-                            return
-                        }
-
-                        val fine = context.checkSelfPermission(
-                            Manifest.permission.ACCESS_FINE_LOCATION
-                        ) == PackageManager.PERMISSION_GRANTED
-                        val coarse = context.checkSelfPermission(
-                            Manifest.permission.ACCESS_COARSE_LOCATION
-                        ) == PackageManager.PERMISSION_GRANTED
-
-                        if (fine || coarse) {
-                            callback.invoke(origin, true, false)
-                            return
-                        }
-
-                        pendingWebPermission?.deny()
-                        pendingWebPermission = null
-                        pendingGeo?.let { (oldOrigin, oldCallback) ->
-                            oldCallback.invoke(oldOrigin, false, false)
-                        }
-                        pendingGeo = origin to callback
-                        permLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
-                        )
-                    }
-
-                    override fun onShowFileChooser(
-                        v: WebView,
-                        cb: ValueCallback<Array<Uri>>,
-                        params: FileChooserParams
-                    ): Boolean {
-                        pendingFile?.onReceiveValue(null)
-                        pendingFile = cb
-
-                        try {
-                            val acceptedTypes = params.acceptTypes
-                                .flatMap { it.split(",") }
-                                .map { it.trim().lowercase() }
-                                .filter { it.contains("/") && it != "*/*" }
-                                .distinct()
-
-                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                                addCategory(Intent.CATEGORY_OPENABLE)
-                                type = acceptedTypes.singleOrNull() ?: "*/*"
-
-                                if (acceptedTypes.size > 1) {
-                                    putExtra(
-                                        Intent.EXTRA_MIME_TYPES,
-                                        acceptedTypes.toTypedArray()
-                                    )
-                                }
-
-                                putExtra(
-                                    Intent.EXTRA_ALLOW_MULTIPLE,
-                                    params.mode == FileChooserParams.MODE_OPEN_MULTIPLE
-                                )
-                            }
-
-                            Log.d(
-                                "CamelWebView",
-                                "FILE PICKER types=$acceptedTypes multiple=${params.mode == FileChooserParams.MODE_OPEN_MULTIPLE}"
-                            )
-
-                            fileLauncher.launch(intent)
-                        } catch (e: Exception) {
-                            Log.e("CamelWebView", "FILE PICKER ERROR", e)
-                            pendingFile?.onReceiveValue(null)
-                            pendingFile = null
-                        }
-
-                        return true
-                    }
-                }
-                loadUrl("https://$host/index.html")
-                web = this
-            }
-        },
+        factory = { controller.view },
         onRelease = {
-            pendingFile?.onReceiveValue(null)
-            pendingFile = null
-            pendingWebPermission?.deny()
-            pendingWebPermission = null
-            pendingGeo?.let { (origin, callback) ->
-                callback.invoke(origin, false, false)
-            }
-            pendingGeo = null
-            it.destroy()
+            // WebViews are pooled for the lifetime of the process. Detaching from the
+            // Compose hierarchy during navigation must never destroy native state.
         }
     )
 }
