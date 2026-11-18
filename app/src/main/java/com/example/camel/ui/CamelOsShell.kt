@@ -36,7 +36,6 @@ import com.example.apps.europass.EuropassModuleScreen
 import com.example.camel.core.CamelAppId
 import com.example.camel.core.CamelAppRegistry
 import com.example.camel.core.webFolder
-import com.example.camel.core.folderToAppId
 import com.example.camel.core.CamelNotificationSeverity
 import com.example.camel.core.CamelOsPreferences
 import com.example.camel.core.CamelOsViewModel
@@ -128,16 +127,6 @@ fun CamelOsShell(
                     onSelectApp = { osViewModel.openApp(it) },
                     onCloseRunningApp = closeRunningApp,
                     onOpenControlCenter = { osViewModel.toggleControlCenter(true) }
-                )
-
-                // Media pill: in the layout flow directly under the top
-                // panel, never as an overlay on top of it, so it can never
-                // cover the launcher/menu buttons or intercept their taps.
-                // When no media session is active it takes no space.
-                CamelDynamicIsland(
-                    onOpenApp = { folder ->
-                        folderToAppId(folder)?.let { osViewModel.openApp(it) }
-                    }
                 )
 
                 val viewportInsetsModifier = Modifier
