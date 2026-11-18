@@ -52,7 +52,7 @@ data class CamelOsPreferences(
     val disabledApps: Set<String> = emptySet(),
     /** Per-app custom icons: routeKey -> "icon:<Name>" or "file:<path>". */
     val customAppIcons: Map<String, String> = emptyMap(),
-    /** Top panel height in dp (48–84). 60 is the original height. 48 is the button row itself — the panel cannot go below that without clipping the buttons. */
+    /** Top panel height in dp (10–80). 60 is the original height; content scales with it (see panelContentScale). */
     val panelHeightDp: Float = 60f,
     val panelWidthMode: CamelPanelWidth = CamelPanelWidth.FULL,
     val panelColourMode: CamelPanelColour = CamelPanelColour.THEME_SURFACE,
@@ -101,7 +101,7 @@ class CamelPreferencesStore(private val context: Context) {
             pinnedPanelApps = prefs[Keys.PINNED_PANEL_APPS] ?: emptySet(),
             disabledApps = prefs[Keys.DISABLED_APPS] ?: emptySet(),
             customAppIcons = CamelAppIconOverrides.parse(prefs[Keys.CUSTOM_APP_ICONS] ?: emptySet()),
-            panelHeightDp = (prefs[Keys.PANEL_HEIGHT_DP] ?: 60f).coerceIn(48f, 84f),
+            panelHeightDp = (prefs[Keys.PANEL_HEIGHT_DP] ?: 60f).coerceIn(10f, 80f),
             panelWidthMode = CamelPanelWidth.fromId(prefs[Keys.PANEL_WIDTH_MODE]),
             panelColourMode = CamelPanelColour.fromId(prefs[Keys.PANEL_COLOUR_MODE]),
             panelCustomColourHex = prefs[Keys.PANEL_CUSTOM_COLOUR_HEX] ?: 0xFFD4AF37,
@@ -194,7 +194,7 @@ class CamelPreferencesStore(private val context: Context) {
     }
 
     suspend fun setPanelHeightDp(heightDp: Float) {
-        context.camelOsDataStore.edit { it[Keys.PANEL_HEIGHT_DP] = heightDp.coerceIn(48f, 84f) }
+        context.camelOsDataStore.edit { it[Keys.PANEL_HEIGHT_DP] = heightDp.coerceIn(10f, 80f) }
     }
 
     suspend fun setPanelWidthMode(mode: CamelPanelWidth) {

@@ -427,10 +427,22 @@ private fun CamelTopPlasmaPanel(
         }
     }
 
-    // Panel height is the 48 dp button row plus vertical padding, so the
-    // 48–72 dp height setting is realised as 0–12 dp of vertical padding.
-    // At the 60 dp default that is exactly today's 6 dp.
-    val verticalPadding = ((panelHeightDp - 48f) / 2f).coerceIn(0f, 12f).dp
+    // Panel content scales with the height setting, relative to the
+    // original 60 dp: at 10 dp the whole row shrinks proportionally, so
+    // the panel never clips its buttons; at 80 dp it grows the same way.
+    // Row height is buttonSize + 2 * verticalPadding = 60 * scale,
+    // which is exactly panelHeightDp.
+    val contentScale = panelContentScale(panelHeightDp)
+    val buttonSize = (48f * contentScale).dp
+    val verticalPadding = (6f * contentScale).dp
+    val scaledLabelMedium =
+        MaterialTheme.typography.labelMedium.copy(
+            fontSize = MaterialTheme.typography.labelMedium.fontSize * contentScale
+        )
+    val scaledLabelSmall =
+        MaterialTheme.typography.labelSmall.copy(
+            fontSize = MaterialTheme.typography.labelSmall.fontSize * contentScale
+        )
     val floating = panelWidthMode == CamelPanelWidth.FLOATING
     val cornerRadius = effectivePanelCornerRadiusDp(panelWidthMode, panelCornerRadiusDp).dp
     val panelColour = resolvePanelColour(panelColourMode, panelCustomColourHex)
@@ -450,9 +462,9 @@ private fun CamelTopPlasmaPanel(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = verticalPadding),
+                .padding(horizontal = (8f * contentScale).dp, vertical = verticalPadding),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy((6f * contentScale).dp)
         ) {
             // Camel Logo -> Opens Application Menu
             Surface(
@@ -462,13 +474,13 @@ private fun CamelTopPlasmaPanel(
                 } else {
                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
                 },
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape((12f * contentScale).dp),
                 border = BorderStroke(
                     1.dp,
                     if (isDrawerOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                 ),
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(buttonSize)
                     .testTag("top_panel_camel_menu")
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -476,8 +488,8 @@ private fun CamelTopPlasmaPanel(
                         painter = painterResource(id = R.drawable.ic_camel_foreground),
                         contentDescription = "Open Application Menu",
                         modifier = Modifier
-                            .size(28.dp)
-                            .clip(RoundedCornerShape(7.dp))
+                            .size((28f * contentScale).dp)
+                            .clip(RoundedCornerShape((7f * contentScale).dp))
                     )
                 }
             }
@@ -488,13 +500,14 @@ private fun CamelTopPlasmaPanel(
                 description = "Camel OS Settings",
                 selected = isSettingsOpen,
                 onClick = onOpenSettings,
-                modifier = Modifier.testTag("top_panel_settings")
+                modifier = Modifier.testTag("top_panel_settings"),
+                contentScale = contentScale
             )
 
             // Running Windows + Pinned Panel App Shortcuts
             LazyRow(
                 modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy((6f * contentScale).dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (runningApps.size > 1) {
@@ -503,22 +516,22 @@ private fun CamelTopPlasmaPanel(
                             Surface(
                                 onClick = { switcherExpanded = true },
                                 color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.height(48.dp).testTag("top_panel_app_switcher")
+                                shape = RoundedCornerShape((10f * contentScale).dp),
+                                modifier = Modifier.height(buttonSize).testTag("top_panel_app_switcher")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    modifier = Modifier.padding(horizontal = (8f * contentScale).dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         Icons.Filled.Apps,
                                         contentDescription = "Open apps",
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size((16f * contentScale).dp)
                                     )
-                                    Spacer(Modifier.width(3.dp))
+                                    Spacer(Modifier.width((3f * contentScale).dp))
                                     Text(
                                         "${runningApps.size}",
-                                        style = MaterialTheme.typography.labelMedium
+                                        style = scaledLabelMedium
                                     )
                                 }
                             }
@@ -535,7 +548,7 @@ private fun CamelTopPlasmaPanel(
                                             CamelAppIcon(
                                                 app = descriptor,
                                                 customIconRef = customAppIcons[descriptor.id.routeKey],
-                                                modifier = Modifier.size(18.dp),
+                                                modifier = Modifier.size((18f * contentScale).dp),
                                                 tint = Color(descriptor.accentHex)
                                             )
                                         },
@@ -544,7 +557,7 @@ private fun CamelTopPlasmaPanel(
                                                 Icon(
                                                     Icons.Filled.Close,
                                                     contentDescription = "Close ${descriptor.title}",
-                                                    modifier = Modifier.size(16.dp)
+                                                    modifier = Modifier.size((16f * contentScale).dp)
                                                 )
                                             }
                                         },
@@ -568,41 +581,41 @@ private fun CamelTopPlasmaPanel(
                         } else {
                             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
                         },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape((10f * contentScale).dp),
                         border = BorderStroke(
                             1.dp,
                             if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                         ),
                         modifier = Modifier
-                            .heightIn(min = 48.dp)
+                            .heightIn(min = buttonSize)
                             .testTag("top_panel_running_${appId.routeKey}")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = (8f * contentScale).dp, vertical = (4f * contentScale).dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             CamelAppIcon(
                                 app = descriptor,
                                 customIconRef = customAppIcons[descriptor.id.routeKey],
-                                modifier = Modifier.size(17.dp),
+                                modifier = Modifier.size((17f * contentScale).dp),
                                 tint = Color(descriptor.accentHex)
                             )
-                            Spacer(modifier = Modifier.width(5.dp))
+                            Spacer(modifier = Modifier.width((5f * contentScale).dp))
                             Text(
                                 text = descriptor.title,
-                                style = MaterialTheme.typography.labelMedium,
+                                style = scaledLabelMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(modifier = Modifier.width(2.dp))
+                            Spacer(modifier = Modifier.width((2f * contentScale).dp))
                             IconButton(
                                 onClick = { onCloseRunningApp(appId) },
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size((24f * contentScale).dp)
                             ) {
                                 Icon(
                                     Icons.Filled.Close,
                                     contentDescription = "Close ${descriptor.title}",
-                                    modifier = Modifier.size(13.dp)
+                                    modifier = Modifier.size((13f * contentScale).dp)
                                 )
                             }
                         }
@@ -613,17 +626,17 @@ private fun CamelTopPlasmaPanel(
                     Surface(
                         onClick = { onSelectApp(app.id) },
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape((10f * contentScale).dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(buttonSize)
                             .testTag("top_panel_pin_${app.id.routeKey}")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             CamelAppIcon(
                                 app = app,
                                 customIconRef = customAppIcons[app.id.routeKey],
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size((20f * contentScale).dp),
                                 tint = Color(app.accentHex)
                             )
                         }
@@ -635,16 +648,16 @@ private fun CamelTopPlasmaPanel(
             Surface(
                 onClick = onOpenControlCenter,
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape((12f * contentScale).dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = buttonSize)
                     .testTag("top_panel_control_center")
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = (8f * contentScale).dp, vertical = (6f * contentScale).dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy((6f * contentScale).dp)
                 ) {
                     Icon(
                         if (telemetry.isNetworkOnline) Icons.Filled.Wifi else Icons.Filled.WifiOff,
@@ -654,12 +667,12 @@ private fun CamelTopPlasmaPanel(
                         } else {
                             MaterialTheme.colorScheme.error
                         },
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size((14f * contentScale).dp)
                     )
                     Text(
                         text = "${telemetry.batteryPercent}%",
                         fontFamily = JetBrainsMonoFamily,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = scaledLabelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
                     BadgedBox(
@@ -667,7 +680,7 @@ private fun CamelTopPlasmaPanel(
                             if (unreadNotifications > 0) {
                                 Box(
                                     modifier = Modifier
-                                        .size(7.dp)
+                                        .size((7f * contentScale).dp)
                                         .clip(CircleShape)
                                         .background(MaterialTheme.colorScheme.primary)
                                 )
@@ -678,13 +691,13 @@ private fun CamelTopPlasmaPanel(
                             Icons.Filled.Notifications,
                             contentDescription = "Control Center",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size((16f * contentScale).dp)
                         )
                     }
                     Text(
                         text = clockText,
                         fontFamily = JetBrainsMonoFamily,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = scaledLabelMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -699,21 +712,22 @@ private fun PanelToolIconButton(
     description: String,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentScale: Float = 1f
 ) {
     Surface(
         onClick = onClick,
         color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color.Transparent,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape((12f * contentScale).dp),
         border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
-        modifier = modifier.size(48.dp)
+        modifier = modifier.size((48f * contentScale).dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 icon,
                 contentDescription = description,
                 tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size((20f * contentScale).dp)
             )
         }
     }

@@ -370,40 +370,45 @@ fun CamelSettingsScreen(
                                     preferences.panelWidthMode,
                                     preferences.panelCornerRadiusDp
                                 )
+                                val previewScale = panelContentScale(preferences.panelHeightDp)
+                                val previewLabelMedium =
+                                    MaterialTheme.typography.labelMedium.copy(
+                                        fontSize = MaterialTheme.typography.labelMedium.fontSize * previewScale
+                                    )
                                 Surface(
                                     color = previewColour.copy(alpha = preferences.panelAlpha),
                                     shape = RoundedCornerShape(previewRadius.dp),
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(48.dp)
+                                        .height(preferences.panelHeightDp.dp)
                                         .testTag("panel_preview")
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp),
+                                        modifier = Modifier.padding(horizontal = (10f * previewScale).dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.spacedBy((8f * previewScale).dp)
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(24.dp)
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .size((24f * previewScale).dp)
+                                                .clip(RoundedCornerShape((6f * previewScale).dp))
                                                 .background(MaterialTheme.colorScheme.primary)
                                         )
                                         Surface(
                                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                                            shape = RoundedCornerShape(8.dp)
+                                            shape = RoundedCornerShape((8f * previewScale).dp)
                                         ) {
                                             Text(
                                                 text = "Calculator",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                style = previewLabelMedium,
+                                                modifier = Modifier.padding(horizontal = (8f * previewScale).dp, vertical = (4f * previewScale).dp)
                                             )
                                         }
                                         Spacer(modifier = Modifier.weight(1f))
                                         Text(
                                             text = "12:00",
-                                            style = MaterialTheme.typography.labelMedium,
+                                            style = previewLabelMedium,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
@@ -417,8 +422,8 @@ fun CamelSettingsScreen(
                                 Slider(
                                     value = preferences.panelHeightDp,
                                     onValueChange = onSetPanelHeightDp,
-                                    valueRange = 48f..84f,
-                                    steps = 35,
+                                    valueRange = 10f..80f,
+                                    steps = 69,
                                     modifier = Modifier.testTag("panel_height_slider")
                                 )
                                 Text(

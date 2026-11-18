@@ -32,6 +32,16 @@ fun resolvePanelColour(mode: CamelPanelColour, customHex: Long): Color =
 fun effectivePanelCornerRadiusDp(widthMode: CamelPanelWidth, radiusDp: Float): Float =
     if (widthMode == CamelPanelWidth.FLOATING && radiusDp <= 0f) 12f else radiusDp
 
+/**
+ * Content scale for the top panel, relative to the original 60 dp height.
+ * The whole panel row (buttons, icons, text) scales with the height setting,
+ * so the panel never clips its content: at 10 dp it is a thin proportional
+ * strip, at 80 dp everything grows the same way. Used by the real panel and
+ * the settings preview so they cannot drift.
+ */
+fun panelContentScale(panelHeightDp: Float): Float =
+    (panelHeightDp / 60f).coerceIn(0.15f, 1.5f)
+
 /** True when any panel setting differs from the defaults (drives the Reset button). */
 fun isPanelCustomised(preferences: CamelOsPreferences): Boolean {
     val defaults = CamelOsPreferences()
