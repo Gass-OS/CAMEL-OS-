@@ -25,17 +25,36 @@ data class CamelMediaInfo(
     val title: String,
     val artist: String,
     val position: Double,
-    val duration: Double
+    val duration: Double,
+    // Epoch millis when the session last reported paused; 0 while playing.
+    // Lets the island auto-hide a paused session after a grace period.
+    val pausedAt: Long = 0L
 )
 
 object CamelMediaBus {
     private val _info = MutableStateFlow<CamelMediaInfo?>(null)
     val info: StateFlow<CamelMediaInfo?> = _info.asStateFlow()
 
+    // Folders the user explicitly dismissed, with the time the dismissal
+    // expires. A dismiss must be reliable: a 5 s observer tick or a progress
+    // update from the same session must not resurrect the panel.
+    private val suppressedUntil = mutableMapOf<String, Long>()
+
     fun publish(info: CamelMediaInfo?) {
+        if (info != null) {
+            val until = suppressedUntil[info.folder] ?: 0L
+            if (System.currentTimeMillis() < until) return
+        }
         _info.value = info
     }
+
+    fun dismiss(folder: String) {
+        suppressedUntil[folder] = System.currentTimeMillis() + DISMISS_SUPPRESSION_MS
+        if (_info.value?.folder == folder) _info.value = null
+    }
 }
+
+private const val DISMISS_SUPPRESSION_MS = 60_000L
 
 typealias CamelNativeHandler = (method: String, params: JSONObject) -> JSONObject?
 
@@ -169,30 +188,48 @@ private val CAMEL_MEDIA_OBSERVER_JS = """
   window.__camelMediaObserverInstalled = true;
   var tracked = new Set();
   var pausedByCamel = null;
+  var lastActive = null;
+  var lastKey = '';
 
   function text(v) { return typeof v === 'string' ? v : ''; }
 
   function report() {
+    // No media element has ever been seen in this page: there is no media
+    // session, so post nothing. Without this guard the 5 s watchdog below
+    // reported a phantom paused session (blank title) for every app, and
+    // the island then showed the app name forever.
+    if (tracked.size === 0) return;
     var playing = false, title = '', artist = '', position = 0, duration = 0, active = null;
     tracked.forEach(function(el) {
       if (!el.paused && !el.ended) { playing = true; if (!active) active = el; }
     });
-    if (active) {
-      title = text(active.getAttribute('data-camel-title') || active.title || active.getAttribute('title'));
-      artist = text(active.getAttribute('data-camel-artist'));
-      position = Number(active.currentTime) || 0;
-      duration = Number(active.duration) || 0;
+    if (active) lastActive = active;
+    // Report from the last playing element even when paused, so a paused
+    // session keeps its title and position instead of looking empty.
+    var src = active || lastActive;
+    var ended = src ? !!src.ended : false;
+    if (src) {
+      title = text(src.getAttribute('data-camel-title') || src.title || src.getAttribute('title'));
+      artist = text(src.getAttribute('data-camel-artist'));
+      position = Number(src.currentTime) || 0;
+      duration = Number(src.duration) || 0;
       if (!isFinite(duration)) duration = 0;
     }
     try {
       if (!playing && navigator.mediaSession && navigator.mediaSession.playbackState === 'playing') playing = true;
     } catch (e) {}
+    // Report only when the state actually changed (about once a second
+    // while playing, for progress). Identical watchdog ticks must not
+    // re-create a session that already ended or that the user dismissed.
+    var key = (playing ? 'playing|' + Math.floor(position) : (ended ? 'ended' : 'paused')) + '|' + title + '|' + artist;
+    if (key === lastKey) return;
+    lastKey = key;
     if (window.CamelNative && window.CamelNative.postMessage) {
       window.CamelNative.postMessage(JSON.stringify({
         id: 'media-' + Date.now(),
         module: 'media',
         method: 'state',
-        params: { playing: playing, title: title, artist: artist, position: position, duration: duration }
+        params: { playing: playing, ended: ended, title: title, artist: artist, position: position, duration: duration }
       }));
     }
   }

@@ -130,6 +130,16 @@ fun CamelOsShell(
                     onOpenControlCenter = { osViewModel.toggleControlCenter(true) }
                 )
 
+                // Media pill: in the layout flow directly under the top
+                // panel, never as an overlay on top of it, so it can never
+                // cover the launcher/menu buttons or intercept their taps.
+                // When no media session is active it takes no space.
+                CamelDynamicIsland(
+                    onOpenApp = { folder ->
+                        folderToAppId(folder)?.let { osViewModel.openApp(it) }
+                    }
+                )
+
                 val viewportInsetsModifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -252,12 +262,6 @@ fun CamelOsShell(
                     }
                 )
             }
-
-            CamelDynamicIsland(
-                onOpenApp = { folder ->
-                    folderToAppId(folder)?.let { osViewModel.openApp(it) }
-                }
-            )
             }
         }
     }

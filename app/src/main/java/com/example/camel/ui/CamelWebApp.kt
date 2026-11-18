@@ -444,18 +444,40 @@ class CamelWebViewController(
             when (method) {
                 "state" -> {
                     val playing = params.optBoolean("playing", false)
+                    val ended = params.optBoolean("ended", false)
                     playingAudio = playing
-                    CamelMediaBus.publish(
-                        CamelMediaInfo(
-                            folder = folder,
-                            origin = origin,
-                            playing = playing,
-                            title = params.optString("title", ""),
-                            artist = params.optString("artist", ""),
-                            position = params.optDouble("position", 0.0),
-                            duration = params.optDouble("duration", 0.0)
+                    val title = params.optString("title", "")
+                    val artist = params.optString("artist", "")
+                    val position = params.optDouble("position", 0.0)
+                    val duration = params.optDouble("duration", 0.0)
+                    // A report with no title, no artist, no duration and no
+                    // playback position is not a media session: a page with
+                    // no audio/video elements must never create one.
+                    val hasMedia = title.isNotBlank() || artist.isNotBlank() ||
+                        duration > 0.0 || position > 0.0
+                    if (!playing && (!hasMedia || ended)) {
+                        // Stopped, ended, or never a real session: clear it
+                        // instead of publishing a phantom paused panel.
+                        if (CamelMediaBus.info.value?.folder == folder) {
+                            CamelMediaBus.publish(null)
+                        }
+                    } else {
+                        CamelMediaBus.publish(
+                            CamelMediaInfo(
+                                folder = folder,
+                                origin = origin,
+                                playing = playing,
+                                title = title,
+                                artist = artist,
+                                position = position,
+                                duration = duration,
+                                // Stamp paused reports so the island can
+                                // auto-hide a paused session after a grace
+                                // period instead of showing it forever.
+                                pausedAt = if (playing) 0L else System.currentTimeMillis()
+                            )
                         )
-                    )
+                    }
                     null
                 }
 

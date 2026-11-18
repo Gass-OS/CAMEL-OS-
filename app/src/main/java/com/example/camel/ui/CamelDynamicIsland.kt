@@ -26,11 +26,27 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.camel.core.CamelAppRegistry
 import com.example.camel.core.folderToAppId
 import com.example.camel.ui.controlCamelMedia
+import kotlinx.coroutines.delay
+
+private const val PAUSED_GRACE_MS = 15_000L
 
 @Composable
 fun CamelDynamicIsland(onOpenApp: (String) -> Unit) {
     val media by CamelMediaBus.info.collectAsStateWithLifecycle()
     var expanded by remember { mutableStateOf(false) }
+
+    // A paused session is shown only as a compact chip and auto-hides after
+    // a grace period, so it can never stay on screen forever. The identity
+    // check keeps a newer report (e.g. playback resumed) from being cleared.
+    LaunchedEffect(media?.folder, media?.pausedAt) {
+        val info = media
+        if (info != null && !info.playing && info.pausedAt > 0L) {
+            delay(PAUSED_GRACE_MS)
+            if (CamelMediaBus.info.value?.pausedAt == info.pausedAt) {
+                CamelMediaBus.publish(null)
+            }
+        }
+    }
 
     AnimatedVisibility(
         visible = media != null,
@@ -49,11 +65,11 @@ fun CamelDynamicIsland(onOpenApp: (String) -> Unit) {
         ) {
             Column(
                 modifier = Modifier
-                    .widthIn(max = 420.dp)
+                    .widthIn(max = 300.dp)
                     .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
-                    .clickable { expanded = !expanded }
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .clickable(enabled = info.playing) { expanded = !expanded }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -87,9 +103,19 @@ fun CamelDynamicIsland(onOpenApp: (String) -> Unit) {
                             modifier = Modifier.size(18.dp)
                         )
                     }
+                    IconButton(onClick = {
+                        expanded = false
+                        CamelMediaBus.dismiss(info.folder)
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Dismiss",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
 
-                if (expanded) {
+                if (expanded && info.playing) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { controlCamelMedia(info.folder, "mute", true) }) {
                             Icon(Icons.Filled.VolumeOff, contentDescription = "Mute", modifier = Modifier.size(18.dp))
