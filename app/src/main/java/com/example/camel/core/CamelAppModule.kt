@@ -55,7 +55,8 @@ data class CamelAppDescriptor(
     val icon: ImageVector,
     val accentHex: Long,
     val sharedServices: List<String>,
-    val keywords: List<String> = emptyList()
+    val keywords: List<String> = emptyList(),
+    val sizeLabel: String = "—"
 )
 
 object CamelAppRegistry {
@@ -81,6 +82,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.AccessAlarms,
             accentHex = 0xFFF59E0B,
+            sizeLabel = "4.3 MB",
             sharedServices = listOf("AlarmScheduler", "NotificationBus"),
             keywords = listOf("clock", "alarm", "timer", "stopwatch")
         ),
@@ -93,6 +95,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.Calculate,
             accentHex = 0xFF38BDF8,
+            sizeLabel = "3.2 MB",
             sharedServices = listOf("Camel Core"),
             keywords = listOf("math", "scientific", "calc", "gass")
         ),
@@ -105,6 +108,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.EditNote,
             accentHex = 0xFFFBBF24,
+            sizeLabel = "4.2 MB",
             sharedServices = listOf("Room DB", "SharedStorage"),
             keywords = listOf("memo", "document", "text", "note")
         ),
@@ -117,6 +121,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.Mic,
             accentHex = 0xFFF43F5E,
+            sizeLabel = "4.4 MB",
             sharedServices = listOf("RecorderService", "NotificationBus"),
             keywords = listOf("audio", "voice", "mic", "recording")
         ),
@@ -129,6 +134,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.CalendarMonth,
             accentHex = 0xFF60A5FA,
+            sizeLabel = "4.1 MB",
             sharedServices = listOf("CalendarScheduler", "NotificationBus"),
             keywords = listOf("calendar", "agenda", "events")
         ),
@@ -141,6 +147,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.WbSunny,
             accentHex = 0xFFFDE047,
+            sizeLabel = "4.2 MB",
             sharedServices = listOf("WeatherService", "LocationBridge"),
             keywords = listOf("meteo", "forecast", "temperature")
         ),
@@ -153,6 +160,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.Map,
             accentHex = 0xFF34D399,
+            sizeLabel = "4.3 MB",
             sharedServices = listOf("LocationBridge", "NetworkService"),
             keywords = listOf("gps", "navigation", "map", "route")
         ),
@@ -165,6 +173,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.MusicNote,
             accentHex = 0xFFA78BFA,
+            sizeLabel = "10.0 MB",
             sharedServices = listOf("MediaPlaybackService", "NotificationBus"),
             keywords = listOf("audio", "songs", "playlist", "music")
         ),
@@ -177,6 +186,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.OndemandVideo,
             accentHex = 0xFFFB7185,
+            sizeLabel = "16.1 MB",
             sharedServices = listOf("MediaPlaybackService", "SharedStorage"),
             keywords = listOf("movies", "mp4", "mkv", "video")
         ),
@@ -189,6 +199,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.Radio,
             accentHex = 0xFFD4AF37,
+            sizeLabel = "4.8 MB",
             sharedServices = listOf("MediaPlaybackService", "NotificationBus"),
             keywords = listOf("fm", "stations", "radio", "stream")
         ),
@@ -201,6 +212,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.LiveTv,
             accentHex = 0xFFEAB308,
+            sizeLabel = "5.6 MB",
             sharedServices = listOf("MediaPlaybackService", "NetworkService"),
             keywords = listOf("iptv", "channels", "tv", "live")
         ),
@@ -213,6 +225,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.PhotoCamera,
             accentHex = 0xFF2DD4BF,
+            sizeLabel = "4.3 MB",
             sharedServices = listOf("CameraBridge", "SharedStorage"),
             keywords = listOf("photo", "lens", "camera", "video")
         ),
@@ -225,6 +238,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.PhotoLibrary,
             accentHex = 0xFF818CF8,
+            sizeLabel = "6.5 MB",
             sharedServices = listOf("SharedStorage", "PhotoPicker"),
             keywords = listOf("photos", "images", "albums", "galerie")
         ),
@@ -237,6 +251,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.Explore,
             accentHex = 0xFFF97316,
+            sizeLabel = "3.8 MB",
             sharedServices = listOf("SensorBridge", "LocationBridge"),
             keywords = listOf("compass", "boussole", "north", "sensors")
         ),
@@ -249,6 +264,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.Memory,
             accentHex = 0xFF10B981,
+            sizeLabel = "4.2 MB",
             sharedServices = listOf("CamelTelemetryService"),
             keywords = listOf("cpu", "ram", "battery", "info", "hardware")
         ),
@@ -261,6 +277,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.FolderZip,
             accentHex = 0xFFD4AF37,
+            sizeLabel = "4.3 MB",
             sharedServices = listOf("SharedStorage", "AppRegistry"),
             keywords = listOf("files", "explorer", "manager", "storage")
         ),
@@ -273,6 +290,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.DownloadForOffline,
             accentHex = 0xFF4ADE80,
+            sizeLabel = "13.2 MB",
             sharedServices = listOf("SharedStorage", "NetworkService"),
             keywords = listOf("linux", "rootfs", "distro", "loader")
         ),
@@ -297,6 +315,7 @@ object CamelAppRegistry {
             isIntegrated = true,
             icon = Icons.Filled.CloudDownload,
             accentHex = 0xFF38BDF8,
+            sizeLabel = "7.0 MB",
             sharedServices = listOf("SharedStorage", "NetworkService"),
             keywords = listOf("windows", "iso", "qcow2", "loader")
         ),

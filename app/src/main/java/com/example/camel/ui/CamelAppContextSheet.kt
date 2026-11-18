@@ -11,10 +11,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.BuildConfig
 import com.example.camel.core.CamelAppDescriptor
 import com.example.camel.core.CamelAppId
+import com.example.camel.core.webFolder
 
+/**
+ * Long-press app menu, upgraded to the frosted transparent style used across
+ * the plasma desktop. The gesture and the four actions are unchanged; this
+ * sheet adds an app-info block (version, folder, size, status, services).
+ *
+ * Frosted, not blurred: true background blur needs RenderEffect (API 31+)
+ * and minSdk is 24, so below API 31 the sheet is translucent without blur.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CamelAppContextSheet(
@@ -29,8 +40,10 @@ fun CamelAppContextSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        scrimColor = Color.Black.copy(alpha = 0.35f)
     ) {
         Column(
             modifier = Modifier
@@ -62,6 +75,35 @@ fun CamelAppContextSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
+
+            // App info — version comes from the OS build itself (BuildConfig),
+            // because the registry carries no per-app semantic version.
+            // Sizes are the bundled asset-folder sizes measured at plan time.
+            AppInfoRow(label = "Version", value = BuildConfig.VERSION_NAME)
+            AppInfoRow(
+                label = "Status",
+                value = if (app.isIntegrated) "Integrated" else "Awaiting upload"
+            )
+            AppInfoRow(
+                label = "Folder",
+                value = app.id.webFolder() ?: if (app.id == CamelAppId.EUROPASS) {
+                    "Native app"
+                } else {
+                    "—"
+                }
+            )
+            AppInfoRow(
+                label = "Size",
+                value = if (app.id.webFolder() != null) "Assets ${app.sizeLabel}" else "—"
+            )
+            if (app.sharedServices.isNotEmpty()) {
+                AppInfoRow(
+                    label = "Services",
+                    value = app.sharedServices.joinToString(", ")
+                )
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
@@ -134,5 +176,28 @@ fun CamelAppContextSheet(
                 Text("Manage App & Permissions in OS Settings")
             }
         }
+    }
+}
+
+@Composable
+private fun AppInfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
